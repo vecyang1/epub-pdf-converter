@@ -1,0 +1,257 @@
+.border {
+    border-bottom-style: solid;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-right-width: 1px;
+    border-top-width: 1px;
+    display: block;
+    margin-top: 50%;
+    width: 100%
+    }
+.c {
+    display: block;
+    font-size: 1.375em;
+    font-style: italic;
+    font-weight: 700;
+    line-height: 1.2;
+    text-align: left;
+    text-indent: 0;
+    margin: 3em 0
+    }
+.c1 {
+    border-left-color: #046145;
+    border-left-width: 1px;
+    border-right-color: #046145;
+    border-right-width: 1px;
+    border-top-color: #046145;
+    border-top-width: 1px;
+    border-bottom: #046145 solid 1px
+    }
+.c2 {
+    border-bottom-width: 0.3em;
+    border-left-style: solid;
+    border-left-width: 0.3em;
+    border-right-width: 0.3em;
+    border-top-width: 0.3em;
+    color: #046145;
+    display: block;
+    margin-bottom: 1.5em;
+    margin-top: 1.5em;
+    text-align: left
+    }
+.c3 {
+    display: block;
+    font-size: 1em;
+    font-weight: 700;
+    letter-spacing: 0;
+    line-height: 1.2;
+    text-align: left;
+    text-indent: 2em;
+    text-justify: inter-ideograph;
+    margin: 3em 0 0
+    }
+.c4 {
+    display: block;
+    font-size: 1.25em;
+    font-weight: 700;
+    line-height: 1.2;
+    text-align: left;
+    text-decoration: underline;
+    text-indent: 0;
+    margin: 30% 0 0.67em
+    }
+.calibre {
+    display: block;
+    font-size: 1em;
+    line-height: 1.2;
+    padding-left: 0;
+    padding-right: 0;
+    margin: 0 5pt
+    }
+.calibre1 {
+    display: block;
+    font-size: 1.5em;
+    font-weight: bold;
+    line-height: 1.2;
+    margin: 0.67em 0
+    }
+.calibre2 {
+    display: block;
+    list-style-type: none;
+    margin-bottom: 1em;
+    margin-right: 0;
+    margin-top: 1em
+    }
+.calibre3 {
+    display: list-item
+    }
+.calibre4 {
+    display: block;
+    list-style-type: none;
+    margin-bottom: 0;
+    margin-right: 0;
+    margin-top: 0
+    }
+.calibre5 {
+    display: none
+    }
+.calibre6 {
+    display: block;
+    font-size: 1em;
+    line-height: 1.2;
+    margin: 0 5pt;
+    padding: 0
+    }
+.calibre7 {
+    display: block;
+    font-size: 1.5em;
+    line-height: 1.2;
+    margin: 0.5em
+    }
+.calibre8 {
+    display: block;
+    font-size: 1.25em;
+    line-height: 1.2;
+    text-indent: 2em
+    }
+.calibre9 {
+    display: block
+    }
+.calibre10 {
+    display: block;
+    text-align: left
+    }
+.calibre11 {
+    border-bottom-style: solid;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-right-width: 1px;
+    border-top-width: 1px;
+    font-size: 0.81818em;
+    font-style: normal;
+    line-height: 1.2
+    }
+.calibre12 {
+    display: block;
+    font-size: 1em;
+    letter-spacing: 0;
+    line-height: 1.2;
+    text-align: justify;
+    text-indent: 2em;
+    text-justify: inter-ideograph;
+    margin: 1em 0 0
+    }
+.calibre13 {
+    display: block;
+    font-size: 1em;
+    letter-spacing: 0;
+    line-height: 1.2;
+    padding-left: 2em;
+    text-align: left;
+    text-indent: 0;
+    text-justify: inter-ideograph;
+    margin: 0.5em 0
+    }
+.calibre14 {
+    display: block;
+    list-style-type: disc;
+    margin-bottom: 1em;
+    margin-right: 0;
+    margin-top: 0.5em
+    }
+.calibre15 {
+    display: list-item;
+    font-size: 1em;
+    line-height: 1.2;
+    margin-bottom: 0;
+    margin-top: 0.3em;
+    text-align: left
+    }
+.calibre16 {
+    display: block;
+    line-height: 1.2
+    }
+.calibre17 {
+    height: auto;
+    width: auto
+    }
+.calibre18 {
+    display: block;
+    font-size: 1em;
+    font-weight: 700;
+    line-height: 1.2;
+    text-align: left;
+    text-indent: 2em;
+    margin: 3em 0 1em
+    }
+.calibre19 {
+    display: block;
+    font-family: "宋体", "Song S", "Apple LiSung Light", "STBShusong", STSong, NSimSun, Song, serif;
+    font-size: 1em;
+    line-height: 1.618;
+    padding-left: 0;
+    padding-right: 0;
+    text-align: left;
+    margin: 0 5pt
+    }
+.calibre20 {
+    display: block;
+    font-size: 1.125em;
+    line-height: 1.2;
+    margin: 1em 0
+    }
+.calibre21 {
+    font-weight: bold
+    }
+.calibre22 {
+    border-bottom-style: none;
+    border-collapse: separate;
+    border-left-style: none;
+    border-right-style: none;
+    border-spacing: 2px;
+    border-top-style: none;
+    display: table;
+    font-size: 0.75em;
+    margin-bottom: 0;
+    margin-top: 0;
+    text-indent: 0
+    }
+.calibre23 {
+    display: table-row-group;
+    vertical-align: middle
+    }
+.calibre24 {
+    display: table-row;
+    vertical-align: inherit
+    }
+.calibre25 {
+    display: table-cell;
+    text-align: inherit;
+    vertical-align: inherit;
+    padding: 0.5em 1em
+    }
+.center {
+    display: block;
+    font-size: 1em;
+    letter-spacing: 0;
+    line-height: 1.2;
+    text-align: center;
+    text-indent: 0;
+    text-justify: inter-ideograph;
+    margin: 1em 0 0
+    }
+.chubanshe {
+    display: block;
+    font-size: 1em;
+    line-height: 1.2;
+    margin-left: 0%;
+    margin-top: 20%;
+    text-align: center;
+    width: 100%
+    }
+.shuming {
+    display: block;
+    padding-top: 30%;
+    text-align: center;
+    text-indent: 0
+    }

@@ -1,0 +1,100 @@
+<?xml version='1.0' encoding='utf-8'?>
+<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="uuid_id" version="2.0">
+  <metadata xmlns:calibre="http://calibre.kovidgoyal.net/2009/metadata" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:opf="http://www.idpf.org/2007/opf" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <dc:title>韭菜的自我修养(李笑来首次公开投资原则)</dc:title>
+    <dc:language>zh</dc:language>
+    <meta name="calibre:timestamp" content="2018-09-17T02:15:47.243000+00:00"/>
+    <dc:date>2018-08-31T16:00:00+00:00</dc:date>
+    <dc:identifier opf:scheme="ISBN">9787559428639</dc:identifier>
+    <dc:identifier opf:scheme="MOBI-ASIN">B07H2CHL7T</dc:identifier>
+    <dc:identifier id="uuid_id" opf:scheme="uuid">8b9f0735-76e0-45a8-946a-44ddff270a51</dc:identifier>
+    <dc:identifier opf:scheme="calibre">8b9f0735-76e0-45a8-946a-44ddff270a51</dc:identifier>
+    <meta name="cover" content="cover"/>
+    <dc:creator opf:file-as="李笑来" opf:role="aut">李笑来</dc:creator>
+    <dc:publisher>江苏凤凰文艺出版社</dc:publisher>
+    <dc:contributor opf:role="bkp">calibre (3.23.0) [https://calibre-ebook.com]</dc:contributor>
+    <meta name="calibre:title_sort" content="韭菜的自我修养(李笑来首次公开投资原则)"/>
+    <meta content="horizontal-lr" name="primary-writing-mode"/>
+  </metadata>
+  <manifest>
+    <item href="cover.jpeg" id="cover" media-type="image/jpeg"/>
+    <item href="images/00002.jpeg" id="id2" media-type="image/jpeg"/>
+    <item href="images/00003.jpeg" id="id3" media-type="image/jpeg"/>
+    <item href="page_styles.css" id="page_css" media-type="text/css"/>
+    <item href="page_styles1.css" id="page_css1" media-type="text/css"/>
+    <item href="stylesheet.css" id="css" media-type="text/css"/>
+    <item href="text/part0000_split_000.html" id="id112" media-type="application/xhtml+xml"/>
+    <item href="text/part0000_split_001.html" id="id111" media-type="application/xhtml+xml"/>
+    <item href="text/part0001.html" id="id12" media-type="application/xhtml+xml"/>
+    <item href="text/part0002.html" id="id13" media-type="application/xhtml+xml"/>
+    <item href="text/part0003.html" id="id14" media-type="application/xhtml+xml"/>
+    <item href="text/part0004.html" id="id15" media-type="application/xhtml+xml"/>
+    <item href="text/part0005.html" id="id16" media-type="application/xhtml+xml"/>
+    <item href="text/part0006.html" id="id17" media-type="application/xhtml+xml"/>
+    <item href="text/part0007.html" id="id18" media-type="application/xhtml+xml"/>
+    <item href="text/part0008.html" id="id19" media-type="application/xhtml+xml"/>
+    <item href="text/part0009.html" id="id20" media-type="application/xhtml+xml"/>
+    <item href="text/part0010.html" id="id21" media-type="application/xhtml+xml"/>
+    <item href="text/part0011.html" id="id22" media-type="application/xhtml+xml"/>
+    <item href="text/part0012.html" id="id23" media-type="application/xhtml+xml"/>
+    <item href="text/part0013.html" id="id24" media-type="application/xhtml+xml"/>
+    <item href="text/part0014.html" id="id25" media-type="application/xhtml+xml"/>
+    <item href="text/part0015.html" id="id26" media-type="application/xhtml+xml"/>
+    <item href="text/part0016.html" id="id27" media-type="application/xhtml+xml"/>
+    <item href="text/part0017.html" id="id28" media-type="application/xhtml+xml"/>
+    <item href="text/part0018.html" id="id29" media-type="application/xhtml+xml"/>
+    <item href="text/part0019.html" id="id30" media-type="application/xhtml+xml"/>
+    <item href="text/part0020.html" id="id31" media-type="application/xhtml+xml"/>
+    <item href="text/part0021.html" id="id32" media-type="application/xhtml+xml"/>
+    <item href="text/part0022.html" id="id33" media-type="application/xhtml+xml"/>
+    <item href="text/part0023.html" id="id34" media-type="application/xhtml+xml"/>
+    <item href="text/part0024.html" id="id35" media-type="application/xhtml+xml"/>
+    <item href="text/part0025.html" id="id36" media-type="application/xhtml+xml"/>
+    <item href="text/part0026.html" id="id37" media-type="application/xhtml+xml"/>
+    <item href="text/part0027.html" id="id38" media-type="application/xhtml+xml"/>
+    <item href="text/part0028.html" id="id39" media-type="application/xhtml+xml"/>
+    <item href="text/part0029.html" id="id40" media-type="application/xhtml+xml"/>
+    <item href="text/part0030.html" id="id41" media-type="application/xhtml+xml"/>
+    <item href="titlepage.xhtml" id="titlepage" media-type="application/xhtml+xml"/>
+    <item href="toc.ncx" id="ncx" media-type="application/x-dtbncx+xml"/>
+  </manifest>
+  <spine toc="ncx">
+    <itemref idref="titlepage"/>
+    <itemref idref="id112"/>
+    <itemref idref="id111"/>
+    <itemref idref="id12"/>
+    <itemref idref="id13"/>
+    <itemref idref="id14"/>
+    <itemref idref="id15"/>
+    <itemref idref="id16"/>
+    <itemref idref="id17"/>
+    <itemref idref="id18"/>
+    <itemref idref="id19"/>
+    <itemref idref="id20"/>
+    <itemref idref="id21"/>
+    <itemref idref="id22"/>
+    <itemref idref="id23"/>
+    <itemref idref="id24"/>
+    <itemref idref="id25"/>
+    <itemref idref="id26"/>
+    <itemref idref="id27"/>
+    <itemref idref="id28"/>
+    <itemref idref="id29"/>
+    <itemref idref="id30"/>
+    <itemref idref="id31"/>
+    <itemref idref="id32"/>
+    <itemref idref="id33"/>
+    <itemref idref="id34"/>
+    <itemref idref="id35"/>
+    <itemref idref="id36"/>
+    <itemref idref="id37"/>
+    <itemref idref="id38"/>
+    <itemref idref="id39"/>
+    <itemref idref="id40"/>
+    <itemref idref="id41"/>
+  </spine>
+  <guide>
+    <reference href="titlepage.xhtml" title="Cover" type="cover"/>
+    <reference href="text/part0000_split_000.html#toc" title="Table of Contents" type="toc"/>
+  </guide>
+</package>

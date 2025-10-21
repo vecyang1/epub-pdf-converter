@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>EPUB 转 PDF 工具</title>
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/modern-normalize/2.0.0/modern-normalize.min.css"
+    integrity="sha512-IW5WGINuD/7++UZ5EONosFVJeFt3PcTJS3BM4tiTt5fRY56Yz1ZTOLQYGvlhb0h4E55DBIuNP7RPpWhyaEq2nA=="
+    crossorigin="anonymous"
+    referrerpolicy="no-referrer"
+  />
+  <style>
+    body { font-family: 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; padding: 2rem; }
+    h1 { margin-bottom: 1.5rem; font-size: 1.8rem; }
+    table { width: 100%; border-collapse: collapse; background: #1e293b; border-radius: 12px; overflow: hidden; }
+    th, td { padding: 0.85rem 1rem; text-align: left; }
+    th { background: #334155; font-weight: 600; }
+    tr:nth-child(even) { background: #273449; }
+    a { color: #38bdf8; }
+    .actions { display: flex; gap: 0.6rem; }
+    button {
+      background: #22c55e;
+      border: none;
+      color: #0f172a;
+      padding: 0.6rem 1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    button.secondary { background: #1e40af; color: #e0f2fe; }
+    .flash { margin-bottom: 1rem; padding: 0.75rem 1rem; border-radius: 8px; }
+    .flash.success { background: #14532d; color: #dcfce7; }
+    .flash.error { background: #7f1d1d; color: #fee2e2; }
+    footer { margin-top: 2rem; font-size: 0.85rem; color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <h1>EPUB 转 PDF</h1>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <table>
+    <thead>
+      <tr>
+        <th>文件名</th>
+        <th>操作</th>
+        <th>PDF 状态</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for epub in epubs %}
+      <tr>
+        <td>{{ epub.name }}</td>
+        <td class="actions">
+          <form method="post" action="{{ url_for('convert_route', filename=epub.name) }}">
+            <button type="submit">转换</button>
+          </form>
+          {% if converted.get(epub.stem) %}
+            <a class="secondary button" href="{{ url_for('download', filename=converted[epub.stem].name) }}">下载 PDF</a>
+          {% endif %}
+        </td>
+        <td>
+          {% if converted.get(epub.stem) %}
+            <span>已生成: {{ converted[epub.stem].name }}</span>
+          {% else %}
+            <span>待转换</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="3">convert 文件夹中尚无 EPUB 文件。</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <footer>
+    已安装依赖：Flask + EbookLib + Playwright。请确保系统字体包含中文（例如思源黑体）。
+  </footer>
+</body>
+</html>

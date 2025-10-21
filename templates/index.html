@@ -51,6 +51,10 @@
             <p class="text-sm text-slate-400" data-i18n="dropSubtitle">Files enter the queue automatically—track progress and history in one place.</p>
             <input id="file-input" type="file" accept=".epub" class="hidden" multiple />
             <button id="upload-button" class="mt-2 inline-flex items-center gap-2 rounded-xl bg-cyan-500/90 text-slate-950 px-5 py-2 text-sm font-semibold hover:bg-cyan-400 button-ring transition" data-i18n="chooseFileButton">Choose EPUB</button>
+            <label class="mt-4 flex items-center justify-center gap-2 text-sm text-slate-300">
+              <input type="checkbox" id="force-regenerate" class="rounded border-slate-600 bg-slate-800 text-cyan-500 focus:ring-cyan-500" />
+              <span data-i18n="forceToggleLabel">Force regenerate (ignore cached PDF)</span>
+            </label>
           </div>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">

@@ -2,6 +2,7 @@ import json
 import os
 import platform
 import queue
+import re
 import shutil
 import subprocess
 import tempfile
@@ -35,6 +36,8 @@ from playwright.sync_api import sync_playwright
 BASE_DIR = Path(__file__).resolve().parent
 STORAGE_DIR = BASE_DIR / "storage"
 STORAGE_DIR.mkdir(exist_ok=True)
+OUTPUT_DIR = BASE_DIR / "output"
+OUTPUT_DIR.mkdir(exist_ok=True)
 
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
@@ -98,9 +101,8 @@ class Job(db.Model):
 
     @property
     def pdf_path(self) -> Path:
-        if not self.pdf_filename:
-            return self.job_dir / "output.pdf"
-        return self.job_dir / self.pdf_filename
+        filename = self.pdf_filename or f"{self.id}.pdf"
+        return OUTPUT_DIR / filename
 
     def settings(self) -> Dict[str, Any]:
         if not self.settings_json:
@@ -180,13 +182,27 @@ def api_create_job():
     if not file:
         return jsonify({"error": "Missing file upload"}), 400
 
+    settings = parse_settings(request.form)
+    force = parse_force(request.form)
+    original_name = file.filename or "upload.epub"
+
+    existing = (
+        Job.query.filter_by(user_id=user.id, original_filename=original_name, status=JobStatus.COMPLETED)
+        .order_by(desc(Job.completed_at))
+        .first()
+    )
+
+    if existing and existing.pdf_path.exists() and existing.settings() == settings and not force:
+        return jsonify({"job": serialize_job(existing), "skipped": True}), 200
+
     job = Job(
         id=str(uuid.uuid4()),
         user_id=user.id,
-        original_filename=file.filename or "upload.epub",
+        original_filename=original_name,
         stored_filename="source.epub",
         status=JobStatus.QUEUED,
-        settings_json=json.dumps(parse_settings(request.form)),
+        settings_json=json.dumps(settings),
+        pdf_filename=build_output_filename(original_name),
     )
     db.session.add(job)
 
@@ -310,6 +326,11 @@ def parse_settings(form_data) -> Dict[str, Any]:
         margin_value = 15.0
     settings["marginMm"] = margin_value
     return settings
+
+
+def parse_force(form_data) -> bool:
+    value = (form_data.get("force") or "").strip().lower()
+    return value in {"1", "true", "yes", "on"}
 
 
 def serialize_job(job: Job) -> Dict[str, Any]:
@@ -550,6 +571,14 @@ def repack_epub_directory(source_dir: Path, output_path: Path) -> None:
         else:
             output_path.unlink()
     shutil.move(temp_epub, output_path)
+
+
+def build_output_filename(original_name: str) -> str:
+    stem = Path(original_name).stem
+    sanitized = re.sub(r"[^A-Za-z0-9._-]+", "_", stem).strip("._- ")
+    if not sanitized:
+        sanitized = f"converted_{uuid.uuid4().hex[:8]}"
+    return f"{sanitized}.pdf"
 
 
 def reveal_in_explorer(target: Path) -> None:

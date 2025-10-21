@@ -5,6 +5,8 @@ A full-featured web application for converting EPUB books (including Chinese + E
 ## Feature highlights
 - Modern single-page dashboard with drag & drop uploads, glassmorphism styling, and responsive design.
 - Built-in English/Chinese UI toggle (English by default).
+- Keeps converted PDFs under `output/` using the original filename.
+- Detects previously converted books and reuses cached PDFs unless “Force regenerate” is enabled.
 - Background conversion queue powered by Playwright + headless Chromium for high-fidelity rendering.
 - Per-user history stored in SQLite, including status tracking, retries, cancellation, and bulk clearing.
 - Persistent preferences (display name, default page size, margins) saved via profile settings.
@@ -42,6 +44,11 @@ playwright install chromium  # one-time ~130 MB
 flask --app app run --reload
 ```
 Visit <http://127.0.0.1:5000> (or the port you selected with `--port`) to access the dashboard. Drag in EPUB files and watch the queue update. Completed jobs display download and “open folder” buttons; failed jobs can be retried with one click.
+
+### Duplicate handling
+- Conversions are cached by original filename and render settings (page size/margins).
+- Uploading the same book again returns instantly with a “cached PDF” toast instead of re-running Chromium.
+- Tick **Force regenerate** near the upload button to override the cache and rebuild the PDF.
 
 ## Configuration
 Environment variables:

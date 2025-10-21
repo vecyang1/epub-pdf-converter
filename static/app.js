@@ -58,6 +58,8 @@ const translations = {
     toastClearSuccess: 'History cleared',
     toastLanguageChanged: 'Language switched',
     confirmClear: 'This will remove all jobs. Continue?',
+    forceToggleLabel: 'Force regenerate (ignore cached PDF)',
+    toastDuplicateSkipped: 'Cached PDF reused',
   },
   zh: {
     headerTitle: 'EPUB → PDF 转换中心',
@@ -118,6 +120,8 @@ const translations = {
     toastClearSuccess: '已清空历史记录',
     toastLanguageChanged: '语言已切换',
     confirmClear: '将删除所有任务，确定继续？',
+    forceToggleLabel: '强制重新生成（忽略缓存）',
+    toastDuplicateSkipped: '已存在 PDF，跳过转换',
   },
 };
 
@@ -129,6 +133,7 @@ const state = {
     marginMm: Number(localStorage.getItem('epub:marginMm') || 15),
   },
   locale: localStorage.getItem('epub:locale') || 'en',
+  forceRegen: localStorage.getItem('epub:forceRegen') === '1',
   autoRefresh: true,
   refreshTimer: null,
   uploading: false,
@@ -137,6 +142,7 @@ const state = {
 const dropZone = document.getElementById('drop-zone');
 const fileInput = document.getElementById('file-input');
 const uploadButton = document.getElementById('upload-button');
+const forceToggle = document.getElementById('force-regenerate');
 const jobsList = document.getElementById('jobs-list');
 const jobsEmpty = document.getElementById('jobs-empty');
 const statTotal = document.getElementById('stat-total');
@@ -181,6 +187,9 @@ function applyTranslations() {
     if (text) el.textContent = text;
   });
   settingsNameInput.placeholder = t('settingsNamePlaceholder');
+  if (forceToggle) {
+    forceToggle.checked = state.forceRegen;
+  }
   localeToggle.textContent = state.locale === 'en' ? '中文' : 'English';
 }
 
@@ -323,18 +332,21 @@ function escapeHtml(str) {
 }
 
 async function handleUpload(files) {
+  if (state.uploading) return;
   if (!files || !files.length) return;
   const queue = Array.from(files);
 
   state.uploading = true;
   showToast(t('toastUploadPending'), 'info');
   const created = [];
+  let skipped = 0;
 
   for (const file of queue) {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('pageSize', state.settings.pageSize);
     formData.append('margin', state.settings.marginMm);
+    formData.append('force', state.forceRegen ? '1' : '0');
 
     try {
       const res = await fetch('/api/jobs', { method: 'POST', body: formData, credentials: 'include' });
@@ -343,7 +355,16 @@ async function handleUpload(files) {
         throw new Error(message);
       }
       const data = await res.json();
-      created.push(data.job);
+      if (data.skipped) {
+        skipped += 1;
+        if (data.job) {
+          // ensure latest data reflected
+          state.jobs = state.jobs.filter((job) => job.id !== data.job.id);
+          state.jobs.unshift(data.job);
+        }
+      } else if (data.job) {
+        created.push(data.job);
+      }
     } catch (error) {
       const networkError = error?.message?.includes('Failed to fetch');
       showToast(`${t('toastUploadErrorPrefix')}：${networkError ? t('toastServerUnavailable') : error.message}`, 'error');
@@ -354,6 +375,9 @@ async function handleUpload(files) {
     created.forEach((job) => state.jobs.unshift(job));
     renderJobs();
     showToast(`${t('toastUploadSuccess')} ×${created.length}`, 'success');
+  }
+  if (skipped) {
+    showToast(`${t('toastDuplicateSkipped')} ×${skipped}`, 'info');
   }
 
   state.uploading = false;
@@ -499,6 +523,13 @@ autoRefreshToggle.addEventListener('change', (event) => {
   state.autoRefresh = event.target.checked;
   setupAutoRefresh();
 });
+
+if (forceToggle) {
+  forceToggle.addEventListener('change', (event) => {
+    state.forceRegen = event.target.checked;
+    localStorage.setItem('epub:forceRegen', state.forceRegen ? '1' : '0');
+  });
+}
 
 openSettingsBtn.addEventListener('click', showSettings);
 closeSettingsBtn.addEventListener('click', hideSettings);

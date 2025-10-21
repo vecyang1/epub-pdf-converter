@@ -13,7 +13,7 @@ if str(ROOT) not in os.sys.path:
     os.sys.path.insert(0, str(ROOT))
 
 import app  # noqa: E402
-from app import db, JobStatus
+from app import db, Job, JobStatus
 
 
 @pytest.fixture
@@ -189,6 +189,11 @@ def test_create_and_download_job(client):
     assert download_resp.status_code == 200
     assert download_resp.headers["Content-Type"].startswith("application/pdf")
 
+    job_record = Job.query.filter_by(id=job_id).first()
+    assert job_record is not None
+    assert job_record.pdf_filename.endswith('.pdf')
+    assert job_record.pdf_path.exists()
+
     reveal_resp = client.post(f"/api/jobs/{job_id}/reveal")
     assert reveal_resp.status_code == 200
 
@@ -232,3 +237,49 @@ def test_nested_epub_auto_extracted(client):
     }
     resp = client.post("/api/jobs", data=data, content_type="multipart/form-data")
     assert resp.status_code == 202
+
+
+def test_duplicate_skipped_without_force(client):
+    epub_bytes = build_epub_bytes()
+    data_first = {
+        "file": (io.BytesIO(epub_bytes), "dup.epub"),
+        "pageSize": "A4",
+        "margin": "15",
+    }
+    first = client.post("/api/jobs", data=data_first, content_type="multipart/form-data")
+    assert first.status_code == 202
+    first_job_id = first.get_json()["job"]["id"]
+
+    data_second = {
+        "file": (io.BytesIO(epub_bytes), "dup.epub"),
+        "pageSize": "A4",
+        "margin": "15",
+    }
+    second = client.post("/api/jobs", data=data_second, content_type="multipart/form-data")
+    assert second.status_code == 200
+    payload = second.get_json()
+    assert payload.get("skipped") is True
+    assert payload["job"]["id"] == first_job_id
+
+
+def test_duplicate_force_regenerates(client):
+    epub_bytes = build_epub_bytes()
+    data_first = {
+        "file": (io.BytesIO(epub_bytes), "force.epub"),
+        "pageSize": "A4",
+        "margin": "15",
+    }
+    first = client.post("/api/jobs", data=data_first, content_type="multipart/form-data")
+    assert first.status_code == 202
+    first_job_id = first.get_json()["job"]["id"]
+
+    data_force = {
+        "file": (io.BytesIO(epub_bytes), "force.epub"),
+        "pageSize": "A4",
+        "margin": "15",
+        "force": "1",
+    }
+    second = client.post("/api/jobs", data=data_force, content_type="multipart/form-data")
+    assert second.status_code == 202
+    second_job_id = second.get_json()["job"]["id"]
+    assert second_job_id != first_job_id

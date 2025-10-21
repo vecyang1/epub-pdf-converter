@@ -74,6 +74,7 @@ const translations = {
     analyticsDailyHeading: 'Last 7 days',
     analyticsDailyEmpty: 'No activity recorded yet.',
     analyticsUnavailable: 'N/A',
+    dropDirectoryWarning: 'Finder packages cannot be dropped. Click “Choose EPUB” instead.',
   },
   zh: {
     headerTitle: 'EPUB → PDF 转换中心',
@@ -150,6 +151,7 @@ const translations = {
     analyticsDailyHeading: '近 7 天',
     analyticsDailyEmpty: '最近暂无转换活动。',
     analyticsUnavailable: '无数据',
+    dropDirectoryWarning: 'Finder 套件暂不支持拖拽上传，请使用“选择 EPUB”按钮。',
   },
 };
 
@@ -619,9 +621,41 @@ fileInput.addEventListener('change', (event) => handleUpload(event.target.files)
   });
 });
 
+function extractDropFiles(dataTransfer) {
+  const files = [];
+  let hasDirectory = false;
+
+  if (dataTransfer.items && dataTransfer.items.length) {
+    for (const item of dataTransfer.items) {
+      if (item.kind !== 'file') continue;
+      const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
+      if (entry && entry.isDirectory) {
+        hasDirectory = true;
+        continue;
+      }
+      const file = item.getAsFile && item.getAsFile();
+      if (file) files.push(file);
+    }
+  }
+
+  if (!files.length && dataTransfer.files) {
+    for (const file of dataTransfer.files) {
+      if (file) files.push(file);
+    }
+  }
+
+  return { files, hasDirectory };
+}
+
 dropZone.addEventListener('drop', (event) => {
-  const files = event.dataTransfer.files;
-  handleUpload(files);
+  extractDropFiles(event.dataTransfer).then(({ files, hasDirectory }) => {
+    if (hasDirectory) {
+      showToast(t('dropDirectoryWarning'), 'error');
+    }
+    if (files.length) {
+      handleUpload(files);
+    }
+  });
 });
 
 jobsList.addEventListener('click', (event) => {

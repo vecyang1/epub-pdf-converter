@@ -155,6 +155,13 @@ const translations = {
   },
 };
 
+let storedAnalytics = null;
+try {
+  storedAnalytics = JSON.parse(localStorage.getItem('epub:analytics') || 'null');
+} catch (error) {
+  storedAnalytics = null;
+}
+
 const state = {
   user: null,
   jobs: [],
@@ -167,7 +174,7 @@ const state = {
   autoRefresh: true,
   refreshTimer: null,
   uploading: false,
-  analytics: null,
+  analytics: storedAnalytics,
 };
 
 const dropZone = document.getElementById('drop-zone');
@@ -204,6 +211,9 @@ async function init() {
   settingsMarginInput.value = state.settings.marginMm;
 
   applyTranslations();
+  if (state.analytics) {
+    renderAnalytics(state.analytics);
+  }
   await fetchSession();
   await refreshJobs();
   setupAutoRefresh();
@@ -494,6 +504,7 @@ async function fetchAnalytics() {
     const data = await res.json();
     state.analytics = data;
     renderAnalytics(data);
+    localStorage.setItem('epub:analytics', JSON.stringify(data));
   } catch (error) {
     console.error('Failed to load analytics', error);
   }
@@ -648,14 +659,13 @@ function extractDropFiles(dataTransfer) {
 }
 
 dropZone.addEventListener('drop', (event) => {
-  extractDropFiles(event.dataTransfer).then(({ files, hasDirectory }) => {
-    if (hasDirectory) {
-      showToast(t('dropDirectoryWarning'), 'error');
-    }
-    if (files.length) {
-      handleUpload(files);
-    }
-  });
+  const { files, hasDirectory } = extractDropFiles(event.dataTransfer);
+  if (hasDirectory) {
+    showToast(t('dropDirectoryWarning'), 'error');
+  }
+  if (files.length) {
+    handleUpload(files);
+  }
 });
 
 jobsList.addEventListener('click', (event) => {

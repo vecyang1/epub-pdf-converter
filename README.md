@@ -68,6 +68,7 @@ Default conversion settings (page size, margin) are stored per user in the brows
 - `DELETE /api/jobs` – clear a user's job history.
 - `GET /api/jobs/<id>/download` – download the generated PDF (when ready).
 - `POST /api/jobs/<id>/reveal` – open the generated PDF in the OS file explorer.
+- `GET /api/analytics` – aggregate success counts, queue depth, and latency metrics for dashboards.
 
 ## Testing
 Set `EPUB_PDF_TEST_MODE=1` and `EPUB_PDF_SYNC=1` to bypass Chromium during tests. Example with `pytest`:

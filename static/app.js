@@ -60,6 +60,20 @@ const translations = {
     confirmClear: 'This will remove all jobs. Continue?',
     forceToggleLabel: 'Force regenerate (ignore cached PDF)',
     toastDuplicateSkipped: 'Cached PDF reused',
+    analyticsHeading: 'Usage Analytics',
+    analyticsSubtitle: 'Monitor conversion success and latency trends.',
+    analyticsTotals: 'Totals',
+    analyticsCompleted: 'Completed',
+    analyticsFailed: 'Failed',
+    analyticsCanceled: 'Canceled',
+    analyticsQueued: 'In queue',
+    analyticsSuccessRate: 'Success rate',
+    analyticsAverageLatency: 'Average latency',
+    analyticsSeconds: 'seconds',
+    analyticsRefresh: 'Refresh Analytics',
+    analyticsDailyHeading: 'Last 7 days',
+    analyticsDailyEmpty: 'No activity recorded yet.',
+    analyticsUnavailable: 'N/A',
   },
   zh: {
     headerTitle: 'EPUB → PDF 转换中心',
@@ -122,6 +136,20 @@ const translations = {
     confirmClear: '将删除所有任务，确定继续？',
     forceToggleLabel: '强制重新生成（忽略缓存）',
     toastDuplicateSkipped: '已存在 PDF，跳过转换',
+    analyticsHeading: '使用统计',
+    analyticsSubtitle: '监控转换成功率与耗时，便于运维观测。',
+    analyticsTotals: '总览',
+    analyticsCompleted: '已完成',
+    analyticsFailed: '失败',
+    analyticsCanceled: '已取消',
+    analyticsQueued: '队列中',
+    analyticsSuccessRate: '成功率',
+    analyticsAverageLatency: '平均耗时',
+    analyticsSeconds: '秒',
+    analyticsRefresh: '刷新统计',
+    analyticsDailyHeading: '近 7 天',
+    analyticsDailyEmpty: '最近暂无转换活动。',
+    analyticsUnavailable: '无数据',
   },
 };
 
@@ -137,6 +165,7 @@ const state = {
   autoRefresh: true,
   refreshTimer: null,
   uploading: false,
+  analytics: null,
 };
 
 const dropZone = document.getElementById('drop-zone');
@@ -152,6 +181,9 @@ const refreshJobsBtn = document.getElementById('refresh-jobs');
 const clearJobsBtn = document.getElementById('clear-jobs');
 const autoRefreshToggle = document.getElementById('auto-refresh');
 const toastContainer = document.getElementById('toast');
+const analyticsSummary = document.getElementById('analytics-summary');
+const analyticsDaily = document.getElementById('analytics-daily');
+const analyticsRefreshBtn = document.getElementById('analytics-refresh');
 
 const settingsModal = document.getElementById('settings-modal');
 const openSettingsBtn = document.getElementById('open-settings');
@@ -224,6 +256,7 @@ async function refreshJobs() {
     const data = await res.json();
     state.jobs = data.jobs || [];
     renderJobs();
+    await fetchAnalytics();
   } catch (error) {
     showToast(t('toastRefreshFailed'), 'error');
   }
@@ -385,6 +418,85 @@ async function handleUpload(files) {
   refreshJobs();
 }
 
+function renderAnalytics(data) {
+  if (!analyticsSummary || !analyticsDaily) return;
+  if (!data) {
+    analyticsSummary.innerHTML = `<p class="text-slate-400">${t('analyticsUnavailable')}</p>`;
+    analyticsDaily.innerHTML = `<p class="text-slate-400">${t('analyticsDailyEmpty')}</p>`;
+    return;
+  }
+
+  const totals = data.totals || {};
+  const successRate = data.successRate != null ? `${(data.successRate * 100).toFixed(1)}%` : t('analyticsUnavailable');
+  const avgLatency = data.averageLatencySeconds != null ? `${data.averageLatencySeconds.toFixed(1)} ${t('analyticsSeconds')}` : t('analyticsUnavailable');
+
+  analyticsSummary.innerHTML = `
+    <div class="grid gap-3 md:grid-cols-5 text-sm">
+      <div class="rounded-xl bg-slate-800/60 px-4 py-3">
+        <p class="text-slate-400 uppercase text-xs">${t('analyticsTotals')}</p>
+        <p class="text-xl font-semibold">${totals.total ?? 0}</p>
+      </div>
+      <div class="rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-4 py-3">
+        <p class="text-emerald-200 uppercase text-xs">${t('analyticsCompleted')}</p>
+        <p class="text-xl font-semibold text-emerald-100">${totals.completed ?? 0}</p>
+      </div>
+      <div class="rounded-xl bg-rose-500/10 border border-rose-500/20 px-4 py-3">
+        <p class="text-rose-200 uppercase text-xs">${t('analyticsFailed')}</p>
+        <p class="text-xl font-semibold text-rose-100">${totals.failed ?? 0}</p>
+      </div>
+      <div class="rounded-xl bg-amber-500/10 border border-amber-500/20 px-4 py-3">
+        <p class="text-amber-200 uppercase text-xs">${t('analyticsCanceled')}</p>
+        <p class="text-xl font-semibold text-amber-100">${totals.canceled ?? 0}</p>
+      </div>
+      <div class="rounded-xl bg-sky-500/10 border border-sky-500/20 px-4 py-3">
+        <p class="text-sky-200 uppercase text-xs">${t('analyticsQueued')}</p>
+        <p class="text-xl font-semibold text-sky-100">${totals.queued ?? 0}</p>
+      </div>
+    </div>
+    <div class="mt-4 grid gap-3 md:grid-cols-2 text-sm">
+      <div class="rounded-xl bg-slate-800/60 px-4 py-3">
+        <p class="text-slate-400 uppercase text-xs">${t('analyticsSuccessRate')}</p>
+        <p class="text-lg font-semibold">${successRate}</p>
+      </div>
+      <div class="rounded-xl bg-slate-800/60 px-4 py-3">
+        <p class="text-slate-400 uppercase text-xs">${t('analyticsAverageLatency')}</p>
+        <p class="text-lg font-semibold">${avgLatency}</p>
+      </div>
+    </div>
+  `;
+
+  if (!data.daily || !data.daily.length) {
+    analyticsDaily.innerHTML = `<p class="text-slate-400">${t('analyticsDailyEmpty')}</p>`;
+  } else {
+    analyticsDaily.innerHTML = data.daily
+      .map((entry) => {
+        const success = entry.completed ?? 0;
+        const failed = entry.failed ?? 0;
+        const total = entry.total ?? success + failed;
+        return `
+          <div class="flex items-center justify-between rounded-xl bg-slate-900/40 border border-slate-700/40 px-4 py-2">
+            <span class="font-medium">${entry.date}</span>
+            <span class="text-sm text-slate-300">${success}/${total} ${t('analyticsCompleted')} · ${failed} ${t('analyticsFailed')}</span>
+          </div>
+        `;
+      })
+      .join('');
+  }
+}
+
+async function fetchAnalytics() {
+  if (!analyticsSummary) return;
+  try {
+    const res = await fetch('/api/analytics', { credentials: 'include' });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    state.analytics = data;
+    renderAnalytics(data);
+  } catch (error) {
+    console.error('Failed to load analytics', error);
+  }
+}
+
 async function handleJobAction(action, id) {
   if (!id) return;
   try {
@@ -528,6 +640,12 @@ if (forceToggle) {
   forceToggle.addEventListener('change', (event) => {
     state.forceRegen = event.target.checked;
     localStorage.setItem('epub:forceRegen', state.forceRegen ? '1' : '0');
+  });
+}
+
+if (analyticsRefreshBtn) {
+  analyticsRefreshBtn.addEventListener('click', () => {
+    fetchAnalytics();
   });
 }
 

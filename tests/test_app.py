@@ -283,3 +283,22 @@ def test_duplicate_force_regenerates(client):
     assert second.status_code == 202
     second_job_id = second.get_json()["job"]["id"]
     assert second_job_id != first_job_id
+
+
+def test_analytics_endpoint(client):
+    # ensure at least one job exists
+    data = {
+        "file": (io.BytesIO(build_epub_bytes()), "analytics.epub"),
+        "pageSize": "A4",
+        "margin": "15",
+    }
+    resp = client.post("/api/jobs", data=data, content_type="multipart/form-data")
+    assert resp.status_code in {202, 200}
+
+    analytics_resp = client.get("/api/analytics")
+    assert analytics_resp.status_code == 200
+    payload = analytics_resp.get_json()
+    assert "totals" in payload
+    assert "successRate" in payload
+    assert "averageLatencySeconds" in payload
+    assert isinstance(payload["totals"].get("total"), int)

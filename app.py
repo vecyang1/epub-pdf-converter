@@ -10,7 +10,7 @@ import threading
 import traceback
 import uuid
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, Optional
 
@@ -232,6 +232,54 @@ def api_create_job():
     enqueue_job(job.id)
 
     return jsonify({"job": serialize_job(job)}), 202
+
+
+@app.route("/api/analytics", methods=["GET"])
+def api_analytics():
+    total = Job.query.count()
+    completed = Job.query.filter_by(status=JobStatus.COMPLETED).count()
+    failed = Job.query.filter_by(status=JobStatus.FAILED).count()
+    canceled = Job.query.filter_by(status=JobStatus.CANCELED).count()
+    in_queue = Job.query.filter(Job.status.in_([JobStatus.QUEUED, JobStatus.PROCESSING])).count()
+
+    completed_jobs = Job.query.filter_by(status=JobStatus.COMPLETED).all()
+    latencies = [
+        (job.completed_at - job.created_at).total_seconds()
+        for job in completed_jobs
+        if job.completed_at and job.created_at
+    ]
+    average_latency = sum(latencies) / len(latencies) if latencies else None
+
+    success_denominator = completed + failed
+    success_rate = (completed / success_denominator) if success_denominator else None
+
+    cutoff = utc_now() - timedelta(days=7)
+    recent_jobs = Job.query.filter(Job.created_at >= cutoff).all()
+    daily = {}
+    for job in recent_jobs:
+        date_key = (job.created_at.astimezone(timezone.utc).date() if job.created_at else utc_now().date())
+        bucket = daily.setdefault(str(date_key), {"completed": 0, "failed": 0, "total": 0})
+        bucket["total"] += 1
+        if job.status == JobStatus.COMPLETED:
+            bucket["completed"] += 1
+        elif job.status == JobStatus.FAILED:
+            bucket["failed"] += 1
+
+    return jsonify({
+        "totals": {
+            "total": total,
+            "completed": completed,
+            "failed": failed,
+            "canceled": canceled,
+            "queued": in_queue,
+        },
+        "successRate": success_rate,
+        "averageLatencySeconds": average_latency,
+        "daily": [
+            {"date": date, **stats}
+            for date, stats in sorted(daily.items())
+        ],
+    })
 
 
 @app.route("/api/jobs/<job_id>/retry", methods=["POST"])

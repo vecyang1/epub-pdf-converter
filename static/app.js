@@ -690,8 +690,8 @@ async function zipDirectoryEntry(entry) {
 
   const zip = new window.JSZIP();
   for (const { path, file } of files) {
-    const buffer = await file.arrayBuffer();
-    zip.file(path, buffer);
+    const isMimetype = path.toLowerCase() === 'mimetype';
+    zip.file(path, file, { binary: true, compression: isMimetype ? 'STORE' : 'DEFLATE' });
   }
 
   const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/epub+zip' });
@@ -753,15 +753,16 @@ dropZone.addEventListener('drop', async (event) => {
   }
 
   const { files, hasDirectory, zipFailed } = await extractDropFiles(event.dataTransfer);
-  if (hasDirectory && !zipFailed) {
-    showToast(t('dropDirectoryProcessing'), 'info');
-  }
   if (zipFailed) {
     showToast(t('dropDirectoryFailed'), 'error');
+    return;
+  }
+  if (hasDirectory) {
+    showToast(t('dropDirectoryProcessing'), 'info');
   }
   if (files.length) {
     handleUpload(files);
-  } else if (!hasDirectory) {
+  } else {
     showToast(`${t('toastUploadErrorPrefix')}：${t('toastServerUnavailable')}`, 'error');
   }
 });

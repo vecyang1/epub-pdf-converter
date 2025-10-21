@@ -597,7 +597,10 @@ function toggleLocale() {
 
 // Event wiring
 dropZone.addEventListener('click', () => fileInput.click());
-uploadButton.addEventListener('click', () => fileInput.click());
+uploadButton.addEventListener('click', (event) => {
+  event.stopPropagation();
+  fileInput.click();
+});
 fileInput.addEventListener('change', (event) => handleUpload(event.target.files));
 
 ['dragenter', 'dragover'].forEach((eventName) => {

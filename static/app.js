@@ -665,6 +665,8 @@ dropZone.addEventListener('drop', (event) => {
   }
   if (files.length) {
     handleUpload(files);
+  } else if (!files.length) {
+    showToast(t('dropDirectoryWarning'), 'error');
   }
 });
 

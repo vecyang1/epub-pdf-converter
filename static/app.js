@@ -74,7 +74,10 @@ const translations = {
     analyticsDailyHeading: 'Last 7 days',
     analyticsDailyEmpty: 'No activity recorded yet.',
     analyticsUnavailable: 'N/A',
-    dropDirectoryWarning: 'Finder packages cannot be dropped. Click “Choose EPUB” instead.',
+    toastPreparingUpload: 'Preparing upload…',
+    dropDirectoryProcessing: 'Finder package detected. Preparing upload…',
+    dropDirectoryFailed: 'Unable to prepare the dragged folder. Please use “Choose EPUB”.',
+    zipDependencyMissing: 'Directory upload unavailable (JSZip missing). Use “Choose EPUB” instead.',
   },
   zh: {
     headerTitle: 'EPUB → PDF 转换中心',
@@ -151,7 +154,10 @@ const translations = {
     analyticsDailyHeading: '近 7 天',
     analyticsDailyEmpty: '最近暂无转换活动。',
     analyticsUnavailable: '无数据',
-    dropDirectoryWarning: 'Finder 套件暂不支持拖拽上传，请使用“选择 EPUB”按钮。',
+    toastPreparingUpload: '正在准备上传…',
+    dropDirectoryProcessing: '检测到 Finder 套件，正在打包上传…',
+    dropDirectoryFailed: '文件夹打包失败，请改用“选择 EPUB”按钮。',
+    zipDependencyMissing: '缺少 JSZip，无法处理文件夹拖拽，请使用“选择 EPUB”。',
   },
 };
 
@@ -632,41 +638,131 @@ fileInput.addEventListener('change', (event) => handleUpload(event.target.files)
   });
 });
 
-function extractDropFiles(dataTransfer) {
-  const files = [];
-  let hasDirectory = false;
+async function extractDropFiles(dataTransfer) {
+  const result = { files: [], hasDirectory: false, zipFailed: false };
+  const items = dataTransfer.items ? Array.from(dataTransfer.items) : [];
 
-  if (dataTransfer.items && dataTransfer.items.length) {
-    for (const item of dataTransfer.items) {
+  if (items.length) {
+    for (const item of items) {
       if (item.kind !== 'file') continue;
       const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
       if (entry && entry.isDirectory) {
-        hasDirectory = true;
-        continue;
+        result.hasDirectory = true;
+        try {
+          const zipped = await zipDirectoryEntry(entry);
+          if (zipped) {
+            result.files.push(zipped);
+          } else {
+            result.zipFailed = true;
+          }
+        } catch (error) {
+          console.error('Failed to zip directory', error);
+          result.zipFailed = true;
+        }
+      } else {
+        const file = item.getAsFile && item.getAsFile();
+        if (file) result.files.push(file);
       }
-      const file = item.getAsFile && item.getAsFile();
-      if (file) files.push(file);
     }
+  } else if (dataTransfer.files) {
+    result.files = Array.from(dataTransfer.files);
   }
 
-  if (!files.length && dataTransfer.files) {
-    for (const file of dataTransfer.files) {
-      if (file) files.push(file);
-    }
-  }
-
-  return { files, hasDirectory };
+  return result;
 }
 
-dropZone.addEventListener('drop', (event) => {
-  const { files, hasDirectory } = extractDropFiles(event.dataTransfer);
-  if (hasDirectory) {
-    showToast(t('dropDirectoryWarning'), 'error');
+function sanitizeFilename(name) {
+  const base = (name || 'bundle').replace(/\.epub$/i, '');
+  const sanitized = base.replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^_+|_+$/g, '');
+  return `${sanitized || 'bundle'}.epub`;
+}
+
+async function zipDirectoryEntry(entry) {
+  if (!window.JSZIP) {
+    showToast(t('zipDependencyMissing'), 'error');
+    return null;
+  }
+
+  const files = await collectDirectoryFiles(entry);
+  if (!files.length) {
+    return null;
+  }
+
+  const zip = new window.JSZIP();
+  for (const { path, file } of files) {
+    const buffer = await file.arrayBuffer();
+    zip.file(path, buffer);
+  }
+
+  const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/epub+zip' });
+  const outputName = sanitizeFilename(entry.name);
+  return new File([blob], outputName, { type: 'application/epub+zip' });
+}
+
+async function collectDirectoryFiles(directoryEntry, prefix = '') {
+  const entries = await readAllEntries(directoryEntry);
+  let files = [];
+  for (const entry of entries) {
+    if (entry.isFile) {
+      const file = await readFileEntry(entry);
+      if (file) {
+        files.push({ path: `${prefix}${entry.name}`, file });
+      }
+    } else if (entry.isDirectory) {
+      const nested = await collectDirectoryFiles(entry, `${prefix}${entry.name}/`);
+      files = files.concat(nested);
+    }
+  }
+  return files;
+}
+
+function readAllEntries(directoryEntry) {
+  return new Promise((resolve) => {
+    const reader = directoryEntry.createReader();
+    const entries = [];
+    const readBatch = () => {
+      reader.readEntries((batch) => {
+        if (!batch.length) {
+          resolve(entries);
+        } else {
+          entries.push(...batch);
+          readBatch();
+        }
+      }, () => resolve(entries));
+    };
+    readBatch();
+  });
+}
+
+function readFileEntry(entry) {
+  return new Promise((resolve) => {
+    entry.file((file) => resolve(file), () => resolve(null));
+  });
+}
+
+dropZone.addEventListener('drop', async (event) => {
+  const containsDirectory = event.dataTransfer.items
+    ? Array.from(event.dataTransfer.items).some((item) => {
+        const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
+        return entry && entry.isDirectory;
+      })
+    : false;
+
+  if (containsDirectory) {
+    showToast(t('toastPreparingUpload'), 'info');
+  }
+
+  const { files, hasDirectory, zipFailed } = await extractDropFiles(event.dataTransfer);
+  if (hasDirectory && !zipFailed) {
+    showToast(t('dropDirectoryProcessing'), 'info');
+  }
+  if (zipFailed) {
+    showToast(t('dropDirectoryFailed'), 'error');
   }
   if (files.length) {
     handleUpload(files);
-  } else if (!files.length) {
-    showToast(t('dropDirectoryWarning'), 'error');
+  } else if (!hasDirectory) {
+    showToast(`${t('toastUploadErrorPrefix')}：${t('toastServerUnavailable')}`, 'error');
   }
 });
 

@@ -7,6 +7,7 @@ A full-featured web application for converting EPUB books (including Chinese + E
 - Built-in English/Chinese UI toggle (English by default).
 - Keeps converted PDFs under `output/` using the original filename.
 - Detects previously converted books and reuses cached PDFs unless “Force regenerate” is enabled.
+- Drag & drop supports Finder/Explorer “package” EPUB folders by auto-zipping them on the fly (JSZip powered).
 - Background conversion queue powered by Playwright + headless Chromium for high-fidelity rendering.
 - Per-user history stored in SQLite, including status tracking, retries, cancellation, and bulk clearing.
 - Persistent preferences (display name, default page size, margins) saved via profile settings.

@@ -1,64 +1,74 @@
-# EPUB → PDF Web Converter
+# EPUB → PDF Conversion Hub
 
-This project provides a lightweight Flask web app that batch-converts the EPUB books found under `convert/` into PDF files. It targets mixed Chinese/English content and embedded images by rendering the EPUB HTML with headless Chromium (via Playwright).
+A full-featured web application for converting EPUB books (including Chinese + English text and embedded images) into printable PDF files. Users can upload directly in the browser, manage their conversion history, and fine-tune default rendering settings.
 
-## Open-source options reviewed
-- **Helias/EPUB-to-PDF** – Telegram bot wrapping Calibre's `ebook-convert` for reliable layout handling. Good match if you can install Calibre CLI: <https://github.com/Helias/EPUB-to-PDF>
-- **TruthHun/converter** – Uses Calibre to turn HTML/Markdown into EPUB/MOBI/PDF: <https://github.com/TruthHun/converter>
-- **rava-dosa/epub2pdf** – Pure-Python pipeline built around WeasyPrint. Works well but needs the GTK/Pango stack, which is heavy to install in this environment: <https://github.com/rava-dosa/epub2pdf>
+## Feature highlights
+- Modern single-page dashboard with drag & drop uploads, glassmorphism styling, and responsive design.
+- Background conversion queue powered by Playwright + headless Chromium for high-fidelity rendering.
+- Per-user history stored in SQLite, including status tracking, retries, cancellation, and bulk clearing.
+- Persistent preferences (display name, default page size, margins) saved via profile settings.
+- Auto-refresh and manual controls to monitor job progress in real time.
+- RESTful JSON API (`/api/jobs`, `/api/profile`, `/api/session`) for integration or automation.
 
-Given the current machine already runs Chrome-based tooling, the Playwright approach keeps dependencies in Python while preserving fonts and images.
+## Open-source tooling considered
+| Project | Notes |
+| --- | --- |
+| [Helias/EPUB-to-PDF](https://github.com/Helias/EPUB-to-PDF) | Calibre-based Telegram bot; great accuracy but requires Calibre CLI runtime. |
+| [TruthHun/converter](https://github.com/TruthHun/converter) | Bulk conversions (HTML/Markdown → EPUB/MOBI/PDF) via Calibre. |
+| [rava-dosa/epub2pdf](https://github.com/rava-dosa/epub2pdf) | Pure Python + WeasyPrint, but needs the GTK/Pango stack—heavy on macOS. |
+
+This project adopts Playwright because Chromium already ships excellent CJK font support and reliably preserves layout without extra native dependencies.
 
 ## Project structure
 ```
-convert/        # Drop your .epub (files or unpacked folders) here
-output/         # Generated PDFs appear here
-app.py          # Flask app + EPUB→HTML→PDF conversion pipeline
+app.py              # Flask app, REST API, conversion pipeline, worker queue
+static/app.js       # Front-end SPA logic
+templates/index.html# Modern UI shell (Tailwind via CDN)
+storage/            # Generated at runtime; job-specific assets
+convert/            # Optional seed EPUB files
+output/             # Legacy folder (no longer used; kept for reference)
 requirements.txt
-venv/           # Local virtual environment (optional)
-templates/
+README.md
 ```
 
-## Environment setup
+## Getting started
 ```bash
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-playwright install chromium  # one-time browser download (~130 MB)
-```
-
-## Run the web app
-```bash
-source venv/bin/activate
+playwright install chromium  # one-time ~130 MB
 flask --app app run --reload
 ```
-Open <http://127.0.0.1:5000> to see all EPUB files under `convert/`. Hit **转换** to generate a PDF; once finished a download link appears.
+Visit <http://127.0.0.1:5000> to access the dashboard. Drag in EPUB files and watch the queue update. Completed jobs display a download button; failed jobs can be retried with one click.
 
-## How conversion works
-1. EPUB is parsed with [EbookLib](https://github.com/aerkalov/ebooklib) so chapter order, text encoding, and CSS are preserved.
-2. Each XHTML document is re-linked so internal resources (images, fonts, styles) resolve against the extracted EPUB directory.
-3. A consolidated HTML document is generated with your CSS plus sensible defaults for Chinese fonts and responsive images.
-4. [Playwright](https://playwright.dev/python) launches headless Chromium to render the HTML and print it to PDF, which produces high-fidelity output for mixed-language content and inline media.
+## Configuration
+Environment variables:
+- `EPUB_PDF_SECRET` – Flask secret key (defaults to `epub-pdf-secret`).
+- `EPUB_PDF_SYNC=1` – Process conversions synchronously (useful for unit tests or hosted workers).
+- `EPUB_PDF_TEST_MODE=1` – Generate stub PDFs instead of launching Chromium (used in automated tests).
 
-## Notes on fonts & images
-- Ensure the OS has CJK fonts installed (the template references `Noto Sans CJK SC` and `PingFang SC` but Chromium will fallback automatically).
-- Remote resources inside EPUBs will be loaded if URLs are reachable; offline media such as images are embedded automatically after extraction.
+Default conversion settings (page size, margin) are stored per user in the browser and sent with each upload. Update them via the **个人设置** modal.
 
-## Troubleshooting
-- **Chromium download blocked**: run `playwright install chromium --force` after checking network access.
-- **Missing fonts (garbled Chinese)**: install a Unicode font and re-run the conversion (`Noto Sans CJK` is recommended).
-- **Large books timeout**: increase the conversion timeout in `_render_pdf` by changing `page.goto(..., wait_until="networkidle")` to extend `goto` or use `page.wait_for_timeout(...)`.
+## API overview
+- `GET /api/session` – returns `{ userId, displayName }`.
+- `POST /api/profile` – update display name.
+- `GET /api/jobs` – list jobs ordered by newest first.
+- `POST /api/jobs` – upload EPUB (`multipart/form-data` with `file`, `pageSize`, `margin`).
+- `POST /api/jobs/<id>/retry` – requeue a completed/failed/canceled job.
+- `DELETE /api/jobs/<id>` – cancel or delete a job.
+- `DELETE /api/jobs` – clear a user's job history.
+- `GET /api/jobs/<id>/download` – download the generated PDF (when ready).
 
-## Converting programmatically
-If you prefer CLI usage without the web UI:
+## Testing
+Set `EPUB_PDF_TEST_MODE=1` and `EPUB_PDF_SYNC=1` to bypass Chromium during tests. Example with `pytest`:
 ```bash
-source venv/bin/activate
-python - <<'PY'
-from pathlib import Path
-from app import convert_epub, CONVERT_DIR
-
-for epub_path in CONVERT_DIR.glob('*.epub'):
-    pdf_path = convert_epub(epub_path)
-    print('Converted:', pdf_path)
-PY
+EPUB_PDF_TEST_MODE=1 EPUB_PDF_SYNC=1 pytest
 ```
+
+## Roadmap ideas
+- Optional authentication via magic links for multi-device history sharing.
+- Email notifications or webhooks when long conversions finish.
+- Automatic font pack management & preview thumbnails.
+- Usage analytics dashboard (success rate, conversion latency) for ops.
+
+Contributions and feedback are welcome—enjoy seamless EPUB conversions!

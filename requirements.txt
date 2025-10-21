@@ -1,4 +1,5 @@
 Flask==3.1.2
+Flask-SQLAlchemy==3.1.1
 ebooklib==0.19
 beautifulsoup4==4.14.2
 lxml==6.0.2

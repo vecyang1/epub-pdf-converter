@@ -1,64 +1,450 @@
+import json
 import os
-import zipfile
-import tempfile
+import queue
 import shutil
+import tempfile
+import threading
+import traceback
+import uuid
+import zipfile
+from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
+from typing import Any, Dict, Optional
 
-from flask import Flask, render_template, redirect, url_for, send_file, flash
-from ebooklib import epub, ITEM_DOCUMENT, ITEM_STYLE
+from flask import (
+    Flask,
+    abort,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    send_file,
+    session,
+    url_for,
+)
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import desc
+from werkzeug.utils import secure_filename
 import warnings
+from ebooklib import epub, ITEM_DOCUMENT, ITEM_STYLE
 from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
 from playwright.sync_api import sync_playwright
 
 BASE_DIR = Path(__file__).resolve().parent
-CONVERT_DIR = BASE_DIR / "convert"
-OUTPUT_DIR = BASE_DIR / "output"
-OUTPUT_DIR.mkdir(exist_ok=True)
+STORAGE_DIR = BASE_DIR / "storage"
+STORAGE_DIR.mkdir(exist_ok=True)
 
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
-app = Flask(__name__)
-app.secret_key = os.environ.get("EPUB_PDF_SECRET", "epub-pdf-secret")
+app = Flask(__name__, static_folder="static", template_folder="templates")
+app.config.update(
+    SECRET_KEY=os.environ.get("EPUB_PDF_SECRET", "epub-pdf-secret"),
+    SQLALCHEMY_DATABASE_URI=f"sqlite:///{BASE_DIR / 'epub_pdf.db'}",
+    SQLALCHEMY_TRACK_MODIFICATIONS=False,
+    MAX_CONTENT_LENGTH=1024 * 1024 * 150,  # 150 MB upload limit
+    EPUB_PDF_SYNC=os.environ.get("EPUB_PDF_SYNC", "").lower() in {"1", "true", "yes"},
+)
+
+db = SQLAlchemy(app)
 
 
-def list_epubs():
-    return sorted(CONVERT_DIR.glob("*.epub"))
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
-def _decode_bytes(data: bytes) -> str:
-    for encoding in ("utf-8", "utf-16", "gb18030", "shift_jis"):
+class JobStatus:
+    QUEUED = "queued"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELED = "canceled"
+
+
+class User(db.Model):
+    id = db.Column(db.String(36), primary_key=True)
+    display_name = db.Column(db.String(120))
+    created_at = db.Column(db.DateTime, default=utc_now)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now)
+
+
+class Job(db.Model):
+    id = db.Column(db.String(36), primary_key=True)
+    user_id = db.Column(db.String(36), db.ForeignKey("user.id"), nullable=False, index=True)
+    original_filename = db.Column(db.String(255))
+    stored_filename = db.Column(db.String(255))
+    pdf_filename = db.Column(db.String(255))
+    status = db.Column(db.String(24), default=JobStatus.QUEUED, index=True)
+    size_bytes = db.Column(db.Integer)
+    error_message = db.Column(db.Text)
+    settings_json = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=utc_now)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now)
+    completed_at = db.Column(db.DateTime)
+    last_progress = db.Column(db.String(120))
+
+    user = db.relationship("User", backref=db.backref("jobs", lazy=True))
+
+    @property
+    def job_dir(self) -> Path:
+        job_dir = STORAGE_DIR / self.id
+        job_dir.mkdir(exist_ok=True, parents=True)
+        return job_dir
+
+    @property
+    def source_path(self) -> Path:
+        return self.job_dir / (self.stored_filename or "source.epub")
+
+    @property
+    def pdf_path(self) -> Path:
+        if not self.pdf_filename:
+            return self.job_dir / "output.pdf"
+        return self.job_dir / self.pdf_filename
+
+    def settings(self) -> Dict[str, Any]:
+        if not self.settings_json:
+            return {}
         try:
-            return data.decode(encoding)
-        except UnicodeDecodeError:
-            continue
-    return data.decode("utf-8", errors="ignore")
+            return json.loads(self.settings_json)
+        except json.JSONDecodeError:
+            return {}
 
 
-def _prepare_html(book: epub.EpubBook, extract_dir: Path) -> str:
+with app.app_context():
+    db.create_all()
+
+job_queue: "queue.Queue[str]" = queue.Queue()
+worker_thread: Optional[threading.Thread] = None
+_worker_lock = threading.Lock()
+
+
+@app.before_request
+def ensure_user():
+    get_current_user()
+
+
+def get_current_user() -> User:
+    user_id = session.get("user_id")
+    if user_id:
+        user = db.session.get(User, user_id)
+        if user:
+            return user
+    user = User(id=str(uuid.uuid4()))
+    db.session.add(user)
+    db.session.commit()
+    session["user_id"] = user.id
+    return user
+
+
+@app.route("/")
+def index():
+    user = get_current_user()
+    return render_template("index.html", display_name=user.display_name or "新用户")
+
+
+@app.route("/api/session", methods=["GET"])
+def api_session():
+    user = get_current_user()
+    return jsonify({
+        "userId": user.id,
+        "displayName": user.display_name,
+    })
+
+
+@app.route("/api/profile", methods=["POST"])
+def api_profile():
+    user = get_current_user()
+    data = request.get_json() or {}
+    name = (data.get("displayName") or "").strip()
+    user.display_name = name[:120] if name else None
+    db.session.commit()
+    return jsonify({"success": True, "displayName": user.display_name})
+
+
+@app.route("/api/jobs", methods=["GET"])
+def api_jobs():
+    user = get_current_user()
+    jobs = (
+        Job.query.filter_by(user_id=user.id)
+        .order_by(desc(Job.created_at))
+        .all()
+    )
+    return jsonify({"jobs": [serialize_job(job) for job in jobs]})
+
+
+@app.route("/api/jobs", methods=["POST"])
+def api_create_job():
+    user = get_current_user()
+    file = request.files.get("file")
+    if not file:
+        abort(400, "Missing file upload")
+
+    filename = secure_filename(file.filename or "")
+    if not filename.lower().endswith(".epub"):
+        abort(400, "仅支持 EPUB 文件")
+
+    job_id = str(uuid.uuid4())
+    job = Job(
+        id=job_id,
+        user_id=user.id,
+        original_filename=file.filename or "未命名.epub",
+        stored_filename="source.epub",
+        status=JobStatus.QUEUED,
+        settings_json=json.dumps(parse_settings(request.form)),
+    )
+    db.session.add(job)
+    db.session.commit()
+
+    job_dir = job.job_dir
+    source_path = job.source_path
+    file.seek(0)
+    file.save(source_path)
+    job.size_bytes = source_path.stat().st_size
+    db.session.commit()
+
+    enqueue_job(job.id)
+
+    return jsonify({"job": serialize_job(job)}), 202
+
+
+@app.route("/api/jobs/<job_id>/retry", methods=["POST"])
+def api_retry_job(job_id):
+    job = get_job_for_user(job_id)
+    if job.status not in {JobStatus.FAILED, JobStatus.COMPLETED, JobStatus.CANCELED}:
+        abort(409, "当前状态无法重试")
+
+    if job.pdf_path.exists():
+        job.pdf_path.unlink()
+    job.status = JobStatus.QUEUED
+    job.error_message = None
+    job.completed_at = None
+    job.updated_at = utc_now()
+    db.session.commit()
+
+    enqueue_job(job.id)
+    return jsonify({"job": serialize_job(job)})
+
+
+@app.route("/api/jobs/<job_id>", methods=["DELETE"])
+def api_delete_job(job_id):
+    job = get_job_for_user(job_id)
+    if job.status == JobStatus.PROCESSING:
+        job.status = JobStatus.CANCELED
+        job.updated_at = utc_now()
+        db.session.commit()
+        return jsonify({"job": serialize_job(job), "message": "任务已标记为取消"})
+
+    cleanup_job(job)
+    return jsonify({"success": True})
+
+
+@app.route("/api/jobs", methods=["DELETE"])
+def api_clear_jobs():
+    user = get_current_user()
+    jobs = Job.query.filter_by(user_id=user.id).all()
+    for job in jobs:
+        cleanup_job(job, commit=False)
+    db.session.commit()
+    return jsonify({"success": True})
+
+
+@app.route("/api/jobs/<job_id>/download", methods=["GET"])
+def api_download(job_id):
+    job = get_job_for_user(job_id)
+    if job.status != JobStatus.COMPLETED or not job.pdf_path.exists():
+        abort(404)
+    return send_file(job.pdf_path, as_attachment=True, download_name=f"{job.original_filename.rsplit('.', 1)[0]}.pdf")
+
+
+@app.route("/health")
+def health():
+    return {"status": "ok"}
+
+
+def get_job_for_user(job_id: str) -> Job:
+    user = get_current_user()
+    job = db.session.get(Job, job_id)
+    if not job or job.user_id != user.id:
+        abort(404)
+    return job
+
+
+def parse_settings(form_data) -> Dict[str, Any]:
+    settings: Dict[str, Any] = {}
+    page_size = form_data.get("pageSize") or "A4"
+    if page_size not in {"A4", "Letter", "Legal"}:
+        page_size = "A4"
+    settings["pageSize"] = page_size
+
+    margin = form_data.get("margin")
+    try:
+        margin_value = float(margin)
+        if not 0 <= margin_value <= 50:
+            raise ValueError
+    except (TypeError, ValueError):
+        margin_value = 15.0
+    settings["marginMm"] = margin_value
+    return settings
+
+
+def serialize_job(job: Job) -> Dict[str, Any]:
+    download_url = None
+    if job.status == JobStatus.COMPLETED and job.pdf_path.exists():
+        download_url = url_for("api_download", job_id=job.id)
+
+    return {
+        "id": job.id,
+        "originalFilename": job.original_filename,
+        "status": job.status,
+        "error": job.error_message,
+        "createdAt": job.created_at.isoformat(),
+        "updatedAt": (job.updated_at.isoformat() if job.updated_at else None),
+        "completedAt": (job.completed_at.isoformat() if job.completed_at else None),
+        "sizeBytes": job.size_bytes,
+        "settings": job.settings(),
+        "downloadUrl": download_url,
+    }
+
+
+def enqueue_job(job_id: str) -> None:
+    app.logger.info("Queueing job %s", job_id)
+    if app.config.get("EPUB_PDF_SYNC") or app.config.get("TESTING"):
+        process_job(job_id)
+    else:
+        start_worker()
+        job_queue.put(job_id)
+
+
+def start_worker():
+    global worker_thread
+    with _worker_lock:
+        if worker_thread and worker_thread.is_alive():
+            return
+        worker_thread = threading.Thread(target=worker_loop, daemon=True)
+        worker_thread.start()
+
+
+def worker_loop():
+    while True:
+        job_id = job_queue.get()
+        try:
+            process_job(job_id)
+        except Exception as exc:  # pragma: no cover - logged for debugging
+            app.logger.exception("Job %s failed: %s", job_id, exc)
+        finally:
+            job_queue.task_done()
+
+
+def process_job(job_id: str) -> None:
+    with app.app_context():
+        job = db.session.get(Job, job_id)
+        if not job:
+            return
+        if job.status == JobStatus.CANCELED:
+            return
+
+        job.status = JobStatus.PROCESSING
+        job.error_message = None
+        job.updated_at = utc_now()
+        db.session.commit()
+
+        output_path = job.pdf_path
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            convert_to_pdf(job.source_path, output_path, job.settings())
+            db.session.refresh(job)
+            if job.status == JobStatus.CANCELED:
+                output_path.unlink(missing_ok=True)
+                job.error_message = job.error_message or "任务已取消"
+                job.updated_at = utc_now()
+            else:
+                job.status = JobStatus.COMPLETED
+                job.pdf_filename = output_path.name
+                job.completed_at = utc_now()
+                job.updated_at = utc_now()
+        except Exception:
+            job.status = JobStatus.FAILED
+            job.error_message = traceback.format_exc()
+            job.updated_at = utc_now()
+        finally:
+            db.session.commit()
+
+
+def cleanup_job(job: Job, commit: bool = True) -> None:
+    job_dir = job.job_dir
+    if job_dir.exists():
+        shutil.rmtree(job_dir, ignore_errors=True)
+    db.session.delete(job)
+    if commit:
+        db.session.commit()
+
+
+def convert_to_pdf(source_path: Path, output_path: Path, settings: Dict[str, Any]) -> None:
+    if not source_path.exists():
+        raise FileNotFoundError("EPUB 文件不存在")
+
+    page_size = settings.get("pageSize", "A4")
+    margin_mm = float(settings.get("marginMm", 15.0))
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir_path = Path(tmpdir)
+        extract_dir = tmpdir_path / "extracted"
+        extract_dir.mkdir(parents=True, exist_ok=True)
+
+        if source_path.is_dir():
+            temp_epub = tmpdir_path / "source.epub"
+            with zipfile.ZipFile(temp_epub, "w") as zip_out:
+                for item in source_path.rglob("*"):
+                    if item.is_file():
+                        zip_out.write(item, item.relative_to(source_path))
+            archive_path = temp_epub
+        else:
+            archive_path = source_path
+
+        with zipfile.ZipFile(archive_path, "r") as zip_ref:
+            zip_ref.extractall(extract_dir)
+
+        book = epub.read_epub(str(archive_path))
+        rendered_html = assemble_html(book, extract_dir)
+        pdf_bytes = render_pdf_with_chromium(
+            rendered_html,
+            page_size=page_size,
+            margin_mm=margin_mm,
+        )
+
+    output_path.write_bytes(pdf_bytes)
+
+
+def assemble_html(book: epub.EpubBook, extract_dir: Path) -> str:
     styles = []
     body_parts = []
 
     for item in book.get_items():
+        if item is None:
+            continue
         if item.get_type() == ITEM_STYLE:
             styles.append(_decode_bytes(item.get_content()))
 
     for item in book.get_items_of_type(ITEM_DOCUMENT):
+        if item is None or not hasattr(item, "get_content"):
+            continue
         body_content = _decode_bytes(item.get_content())
         soup = BeautifulSoup(body_content, "lxml")
-        doc_dir = PurePosixPath(item.get_name()).parent
+        name = getattr(item, "get_name", lambda: "")()
+        doc_dir = PurePosixPath(name or "").parent
 
         for tag in soup.find_all(src=True):
             src = tag.get("src")
             if not src:
                 continue
-            resolved = _resolve_resource(doc_dir, src)
+            resolved = resolve_resource(doc_dir, src)
             tag["src"] = resolved
 
         for tag in soup.find_all(href=True):
             href = tag.get("href")
             if not href:
                 continue
-            resolved = _resolve_resource(doc_dir, href)
+            resolved = resolve_resource(doc_dir, href)
             tag["href"] = resolved
 
         body = soup.body or soup
@@ -68,13 +454,13 @@ def _prepare_html(book: epub.EpubBook, extract_dir: Path) -> str:
     base_href = extract_dir.as_uri().rstrip('/') + '/'
     assembled_html = f"""
     <!DOCTYPE html>
-    <html lang=\"en\">
+    <html lang=\"zh-CN\">
     <head>
       <meta charset=\"utf-8\">
       <base href=\"{base_href}\">
       <style>
-        body {{ font-family: 'Noto Sans CJK SC', 'PingFang SC', 'Helvetica Neue', Helvetica, Arial, sans-serif; margin: 1in; }}
-        img {{ max-width: 100%; height: auto; }}
+        body {{ font-family: 'Noto Sans CJK SC', 'PingFang SC', 'Helvetica Neue', Helvetica, Arial, sans-serif; margin: 0; padding: 40px; }}
+        img {{ max-width: 100%; height: auto; margin: 1rem 0; }}
         table {{ width: 100%; border-collapse: collapse; }}
         {style_block}
       </style>
@@ -87,7 +473,31 @@ def _prepare_html(book: epub.EpubBook, extract_dir: Path) -> str:
     return assembled_html
 
 
-def _resolve_resource(doc_dir: PurePosixPath, link: str) -> str:
+def render_pdf_with_chromium(html: str, page_size: str, margin_mm: float) -> bytes:
+    if os.environ.get("EPUB_PDF_TEST_MODE"):
+        return b"%PDF-1.4\n% Stub PDF generated for tests\n"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        html_path = Path(tmpdir) / "book.html"
+        html_path.write_text(html, encoding="utf-8")
+
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            page = browser.new_page()
+            page.goto(html_path.as_uri(), wait_until="networkidle")
+            page.add_style_tag(content=f"@page {{ size: {page_size}; margin: {margin_mm}mm; }}")
+            pdf_bytes = page.pdf(format=page_size, print_background=True, margin={
+                "top": f"{margin_mm}mm",
+                "bottom": f"{margin_mm}mm",
+                "left": f"{margin_mm}mm",
+                "right": f"{margin_mm}mm",
+            })
+            browser.close()
+
+    return pdf_bytes
+
+
+def resolve_resource(doc_dir: PurePosixPath, link: str) -> str:
     href_path = PurePosixPath(link)
     if href_path.is_absolute() or href_path.anchor:
         return href_path.as_posix()
@@ -97,69 +507,15 @@ def _resolve_resource(doc_dir: PurePosixPath, link: str) -> str:
     return normalized
 
 
-def convert_epub(epub_path: Path) -> Path:
-    book = epub.read_epub(str(epub_path))
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmpdir_path = Path(tmpdir)
-        if epub_path.is_dir():
-            shutil.copytree(epub_path, tmpdir_path, dirs_exist_ok=True)
-        else:
-            with zipfile.ZipFile(epub_path, 'r') as zip_ref:
-                zip_ref.extractall(tmpdir_path)
-
-        rendered_html = _prepare_html(book, tmpdir_path)
-        pdf_bytes = _render_pdf(rendered_html)
-
-    output_path = OUTPUT_DIR / f"{epub_path.stem}.pdf"
-    output_path.write_bytes(pdf_bytes)
-    return output_path
+def _decode_bytes(data: bytes) -> str:
+    for encoding in ("utf-8", "utf-16", "gb18030", "shift_jis"):
+        try:
+            return data.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return data.decode("utf-8", errors="ignore")
 
 
-def _render_pdf(html: str) -> bytes:
-    with tempfile.TemporaryDirectory() as tmpdir:
-        html_path = Path(tmpdir) / "book.html"
-        html_path.write_text(html, encoding='utf-8')
-
-        with sync_playwright() as p:
-            browser = p.chromium.launch()
-            page = browser.new_page()
-            page.goto(html_path.as_uri(), wait_until="networkidle")
-            pdf_bytes = page.pdf(format="A4", print_background=True)
-            browser.close()
-
-    return pdf_bytes
-
-
-@app.route('/')
-def index():
-    epubs = list_epubs()
-    converted = {pdf.stem: pdf for pdf in OUTPUT_DIR.glob('*.pdf')}
-    return render_template('index.html', epubs=epubs, converted=converted)
-
-
-@app.route('/convert/<path:filename>', methods=['POST'])
-def convert_route(filename):
-    epub_path = (CONVERT_DIR / filename).resolve()
-    if not epub_path.exists() or epub_path.suffix.lower() != '.epub':
-        flash('EPUB file not found.')
-        return redirect(url_for('index'))
-
-    try:
-        pdf_path = convert_epub(epub_path)
-        flash(f'Converted {epub_path.name} → {pdf_path.name}', 'success')
-    except Exception as exc:
-        flash(f'Failed to convert {epub_path.name}: {exc}', 'error')
-    return redirect(url_for('index'))
-
-
-@app.route('/download/<path:filename>')
-def download(filename):
-    pdf_path = (OUTPUT_DIR / filename).resolve()
-    if not pdf_path.exists() or pdf_path.suffix.lower() != '.pdf':
-        flash('PDF not found.')
-        return redirect(url_for('index'))
-    return send_file(pdf_path, as_attachment=True)
-
-
-if __name__ == '__main__':
+if __name__ == "__main__":
+    start_worker()
     app.run(debug=True)

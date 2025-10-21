@@ -1,7 +1,9 @@
 import json
 import os
+import platform
 import queue
 import shutil
+import subprocess
 import tempfile
 import threading
 import traceback
@@ -176,29 +178,39 @@ def api_create_job():
     user = get_current_user()
     file = request.files.get("file")
     if not file:
-        abort(400, "Missing file upload")
+        return jsonify({"error": "Missing file upload"}), 400
 
-    filename = secure_filename(file.filename or "")
-    if not filename.lower().endswith(".epub"):
-        abort(400, "仅支持 EPUB 文件")
-
-    job_id = str(uuid.uuid4())
     job = Job(
-        id=job_id,
+        id=str(uuid.uuid4()),
         user_id=user.id,
-        original_filename=file.filename or "未命名.epub",
+        original_filename=file.filename or "upload.epub",
         stored_filename="source.epub",
         status=JobStatus.QUEUED,
         settings_json=json.dumps(parse_settings(request.form)),
     )
     db.session.add(job)
-    db.session.commit()
 
     job_dir = job.job_dir
     source_path = job.source_path
-    file.seek(0)
+    file.stream.seek(0)
     file.save(source_path)
     job.size_bytes = source_path.stat().st_size
+
+    try:
+        ensure_epub_archive(source_path)
+    except ValueError as exc:
+        shutil.rmtree(job_dir, ignore_errors=True)
+        db.session.rollback()
+        message = f"{exc}" if exc.args else "Uploaded file is not a valid EPUB archive."
+        app.logger.warning(
+            "Upload rejected: not a valid EPUB archive (job_id=%s, filename=%s, size=%s, reason=%s)",
+            job.id,
+            file.filename,
+            job.size_bytes,
+            exc,
+        )
+        return jsonify({"error": message}), 400
+
     db.session.commit()
 
     enqueue_job(job.id)
@@ -253,6 +265,20 @@ def api_download(job_id):
     if job.status != JobStatus.COMPLETED or not job.pdf_path.exists():
         abort(404)
     return send_file(job.pdf_path, as_attachment=True, download_name=f"{job.original_filename.rsplit('.', 1)[0]}.pdf")
+
+
+@app.route("/api/jobs/<job_id>/reveal", methods=["POST"])
+def api_reveal(job_id):
+    job = get_job_for_user(job_id)
+    if job.status != JobStatus.COMPLETED or not job.pdf_path.exists():
+        abort(404, "PDF 尚未生成")
+
+    try:
+        reveal_in_explorer(job.pdf_path)
+    except Exception as exc:  # pragma: no cover - platform specific
+        abort(500, f"无法打开文件夹: {exc}")
+
+    return jsonify({"success": True})
 
 
 @app.route("/health")
@@ -413,6 +439,134 @@ def convert_to_pdf(source_path: Path, output_path: Path, settings: Dict[str, Any
         )
 
     output_path.write_bytes(pdf_bytes)
+
+
+def is_epub_archive(path: Path) -> bool:
+    if not path.exists() or path.stat().st_size < 4:
+        return False
+    try:
+        if not zipfile.is_zipfile(path):
+            return False
+        with zipfile.ZipFile(path, "r") as zf:
+            names = {name.lower() for name in zf.namelist()}
+            if "meta-inf/container.xml" not in names:
+                return False
+            mimetype = zf.read("mimetype").decode("utf-8", errors="ignore").strip().lower() if "mimetype" in names else ""
+            if mimetype and mimetype != "application/epub+zip":
+                return False
+        return True
+    except Exception:
+        return False
+
+
+def ensure_epub_archive(path: Path) -> None:
+    if path.is_dir():
+        temp_file = path.with_suffix(".tmp.epub")
+        if temp_file.exists():
+            temp_file.unlink()
+        repack_epub_directory(path, temp_file)
+        shutil.rmtree(path, ignore_errors=True)
+        shutil.move(temp_file, path)
+        ensure_epub_archive(path)
+        return
+
+    if is_epub_archive(path):
+        return
+
+    if not zipfile.is_zipfile(path):
+        raise ValueError("Uploaded file is not a valid EPUB archive. Please choose an .epub file.")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmpdir = Path(tmp)
+        with zipfile.ZipFile(path, "r") as zf:
+            try:
+                zf.extractall(tmpdir)
+            except Exception as exc:
+                raise ValueError("Failed to unpack the uploaded archive.") from exc
+
+        inner_epub_dirs = sorted(p for p in tmpdir.rglob("*.epub") if p.is_dir())
+        if inner_epub_dirs:
+            repack_epub_directory(inner_epub_dirs[0], path)
+            ensure_epub_archive(path)
+            return
+
+        inner_epubs = sorted(p for p in tmpdir.rglob("*.epub") if p.is_file())
+        if inner_epubs:
+            target = inner_epubs[0]
+            shutil.copyfile(target, path)
+            ensure_epub_archive(path)
+            return
+
+        if is_epub_directory(tmpdir):
+            repack_epub_directory(tmpdir, path)
+            ensure_epub_archive(path)
+            return
+
+    raise ValueError("Uploaded file is not a valid EPUB archive. Please choose an .epub file.")
+
+
+def is_epub_directory(directory: Path) -> bool:
+    if not directory.exists():
+        return False
+    meta = list(directory.rglob("META-INF/container.xml"))
+    mimetype = list(directory.rglob("mimetype"))
+    if not meta or not mimetype:
+        return False
+    try:
+        content = mimetype[0].read_text(encoding="utf-8", errors="ignore").strip().lower()
+    except Exception:
+        content = ""
+    return content in {"application/epub+zip", ""}
+
+
+def repack_epub_directory(source_dir: Path, output_path: Path) -> None:
+    temp_epub = output_path.with_suffix(".tmp")
+    if temp_epub.exists():
+        temp_epub.unlink()
+
+    rel_root = source_dir
+    if source_dir.is_dir():
+        children = [child for child in source_dir.iterdir() if not child.name.startswith("__MACOSX")]
+        if len(children) == 1 and children[0].is_dir():
+            rel_root = children[0]
+    else:
+        raise ValueError("EPUB directory repack expected a folder")
+
+    with zipfile.ZipFile(temp_epub, "w") as zf:
+        mimetype_file = next((p for p in rel_root.rglob("mimetype") if p.is_file()), None)
+        if mimetype_file:
+            zf.write(mimetype_file, "mimetype", compress_type=zipfile.ZIP_STORED)
+        for file in sorted(rel_root.rglob("*")):
+            if not file.is_file():
+                continue
+            arcname = file.relative_to(rel_root)
+            if str(arcname) == "mimetype":
+                continue
+            zf.write(file, str(arcname))
+
+    if output_path.exists():
+        if output_path.is_dir():
+            shutil.rmtree(output_path, ignore_errors=True)
+        else:
+            output_path.unlink()
+    shutil.move(temp_epub, output_path)
+
+
+def reveal_in_explorer(target: Path) -> None:
+    target = target.resolve()
+    if not target.exists():
+        raise FileNotFoundError(f"路径不存在: {target}")
+
+    if os.environ.get("EPUB_PDF_TEST_MODE"):
+        return
+
+    system = platform.system()
+    if system == "Darwin":
+        subprocess.Popen(["open", "-R", str(target)])
+    elif system == "Windows":
+        subprocess.Popen(["explorer", "/select,", str(target)])
+    else:
+        subprocess.Popen(["xdg-open", str(target.parent)])
 
 
 def assemble_html(book: epub.EpubBook, extract_dir: Path) -> str:

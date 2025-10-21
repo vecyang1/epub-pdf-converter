@@ -4,9 +4,11 @@ A full-featured web application for converting EPUB books (including Chinese + E
 
 ## Feature highlights
 - Modern single-page dashboard with drag & drop uploads, glassmorphism styling, and responsive design.
+- Built-in English/Chinese UI toggle (English by default).
 - Background conversion queue powered by Playwright + headless Chromium for high-fidelity rendering.
 - Per-user history stored in SQLite, including status tracking, retries, cancellation, and bulk clearing.
 - Persistent preferences (display name, default page size, margins) saved via profile settings.
+- One-click “open folder” action to reveal converted PDFs in Finder/Explorer.
 - Auto-refresh and manual controls to monitor job progress in real time.
 - RESTful JSON API (`/api/jobs`, `/api/profile`, `/api/session`) for integration or automation.
 
@@ -39,7 +41,7 @@ pip install -r requirements.txt
 playwright install chromium  # one-time ~130 MB
 flask --app app run --reload
 ```
-Visit <http://127.0.0.1:5000> to access the dashboard. Drag in EPUB files and watch the queue update. Completed jobs display a download button; failed jobs can be retried with one click.
+Visit <http://127.0.0.1:5000> (or the port you selected with `--port`) to access the dashboard. Drag in EPUB files and watch the queue update. Completed jobs display download and “open folder” buttons; failed jobs can be retried with one click.
 
 ## Configuration
 Environment variables:
@@ -58,6 +60,7 @@ Default conversion settings (page size, margin) are stored per user in the brows
 - `DELETE /api/jobs/<id>` – cancel or delete a job.
 - `DELETE /api/jobs` – clear a user's job history.
 - `GET /api/jobs/<id>/download` – download the generated PDF (when ready).
+- `POST /api/jobs/<id>/reveal` – open the generated PDF in the OS file explorer.
 
 ## Testing
 Set `EPUB_PDF_TEST_MODE=1` and `EPUB_PDF_SYNC=1` to bypass Chromium during tests. Example with `pytest`:

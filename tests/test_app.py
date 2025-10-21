@@ -106,6 +106,63 @@ def build_epub_bytes() -> bytes:
     return buffer.getvalue()
 
 
+def build_invalid_epub_bytes() -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as zf:
+        zf.writestr("fake.txt", "not an epub")
+    return buffer.getvalue()
+
+
+def build_dir_epub_bytes() -> bytes:
+    # Simulate macOS Finder bundling: folder containing EPUB structure zipped
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as zf:
+        zf.writestr("Book/mimetype", "application/epub+zip", compress_type=zipfile.ZIP_STORED)
+        zf.writestr(
+            "Book/META-INF/container.xml",
+            """<?xml version='1.0' encoding='utf-8'?>
+            <container version='1.0' xmlns='urn:oasis:names:tc:opendocument:xmlns:container'>
+              <rootfiles>
+                <rootfile full-path='OEBPS/content.opf' media-type='application/oebps-package+xml'/>
+              </rootfiles>
+            </container>
+            """,
+        )
+        zf.writestr(
+            "Book/OEBPS/content.opf",
+            """<?xml version='1.0' encoding='utf-8'?>
+            <package xmlns='http://www.idpf.org/2007/opf' version='2.0' unique-identifier='BookId'>
+              <metadata xmlns:dc='http://purl.org/dc/elements/1.1/'>
+                <dc:title>Bundle Test</dc:title>
+                <dc:language>en</dc:language>
+                <dc:identifier id='BookId'>urn:uuid:bundle-test</dc:identifier>
+              </metadata>
+              <manifest>
+                <item id='chapter1' href='Text/ch1.xhtml' media-type='application/xhtml+xml'/>
+              </manifest>
+              <spine>
+                <itemref idref='chapter1'/>
+              </spine>
+            </package>
+            """,
+        )
+        zf.writestr(
+            "Book/Text/ch1.xhtml",
+            """<?xml version='1.0' encoding='utf-8'?>
+            <html xmlns='http://www.w3.org/1999/xhtml'><body><p>Bundle</p></body></html>
+            """,
+        )
+    return buffer.getvalue()
+
+
+def build_nested_epub_bytes() -> bytes:
+    inner = build_epub_bytes()
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as zf:
+        zf.writestr("inner.epub", inner)
+    return buffer.getvalue()
+
+
 def test_create_and_download_job(client):
     session_resp = client.get("/api/session")
     assert session_resp.status_code == 200
@@ -132,6 +189,9 @@ def test_create_and_download_job(client):
     assert download_resp.status_code == 200
     assert download_resp.headers["Content-Type"].startswith("application/pdf")
 
+    reveal_resp = client.post(f"/api/jobs/{job_id}/reveal")
+    assert reveal_resp.status_code == 200
+
     retry_resp = client.post(f"/api/jobs/{job_id}/retry")
     assert retry_resp.status_code == 200
 
@@ -140,3 +200,35 @@ def test_create_and_download_job(client):
 
     clear_resp = client.delete("/api/jobs")
     assert clear_resp.status_code == 200
+
+
+def test_invalid_epub_rejected(client):
+    bad_bytes = build_invalid_epub_bytes()
+    data = {
+        "file": (io.BytesIO(bad_bytes), "bad.epub"),
+        "pageSize": "A4",
+        "margin": "15",
+    }
+    resp = client.post("/api/jobs", data=data, content_type="multipart/form-data")
+    assert resp.status_code == 400
+    assert "container" in resp.get_data(as_text=True) or "valid EPUB" in resp.get_data(as_text=True)
+
+
+def test_directory_style_epub(client):
+    data = {
+        "file": (io.BytesIO(build_dir_epub_bytes()), "bundle.epub"),
+        "pageSize": "A4",
+        "margin": "15",
+    }
+    resp = client.post("/api/jobs", data=data, content_type="multipart/form-data")
+    assert resp.status_code == 202
+
+
+def test_nested_epub_auto_extracted(client):
+    data = {
+        "file": (io.BytesIO(build_nested_epub_bytes()), "nested.epub.zip"),
+        "pageSize": "A4",
+        "margin": "15",
+    }
+    resp = client.post("/api/jobs", data=data, content_type="multipart/form-data")
+    assert resp.status_code == 202

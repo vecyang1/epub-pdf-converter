@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>EPUB → PDF 转换工作台</title>
+  <title>EPUB → PDF Conversion Hub</title>
   <script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -12,7 +12,7 @@
     body { font-family: 'Inter', 'PingFang SC', 'Noto Sans CJK SC', system-ui, -apple-system, BlinkMacSystemFont, sans-serif; }
     .glass { backdrop-filter: blur(16px); background: rgba(15, 23, 42, 0.55); border: 1px solid rgba(148, 163, 184, 0.15); }
     .button-ring { box-shadow: 0 10px 30px rgba(56, 189, 248, 0.35); }
-    .action-btn { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.45rem 1rem; border-radius: 0.75rem; font-size: 0.75rem; font-weight: 600; color: #0f172a; transition: all 0.2s ease; }
+    .action-btn { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.45rem 1rem; border-radius: 0.75rem; font-size: 0.75rem; font-weight: 600; transition: all 0.2s ease; }
   </style>
 </head>
 <body class="min-h-screen bg-slate-950 text-slate-100">
@@ -23,55 +23,58 @@
   <div class="relative z-10 max-w-6xl mx-auto px-4 py-10 space-y-8">
     <header class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
       <div>
-        <h1 class="text-3xl font-semibold tracking-tight">EPUB → PDF 转换中心</h1>
-        <p class="text-slate-400 mt-1">极速转换、保留中文排版与插图，让你的电子书随时打印阅读。</p>
+        <h1 class="text-3xl font-semibold tracking-tight" data-i18n="headerTitle">EPUB → PDF Conversion Hub</h1>
+        <p class="text-slate-400 mt-1" data-i18n="headerSubtitle">Lightning-fast conversions that preserve bilingual layouts and high-resolution images.</p>
       </div>
-      <div class="glass rounded-2xl px-4 py-3 flex items-center gap-4">
+      <div class="glass rounded-2xl px-4 py-3 flex items-center gap-3">
         <div>
-          <p class="text-xs uppercase text-slate-400">当前用户</p>
+          <p class="text-xs uppercase text-slate-400" data-i18n="currentUserLabel">Current User</p>
           <p id="display-name" class="text-lg font-medium">{{ display_name }}</p>
         </div>
-        <button id="open-settings" class="inline-flex items-center gap-2 rounded-xl bg-cyan-500/90 text-slate-950 px-4 py-2 text-sm font-semibold hover:bg-cyan-400 button-ring transition">个人设置</button>
+        <div class="flex items-center gap-2">
+          <button id="locale-toggle" class="inline-flex items-center gap-2 rounded-xl bg-slate-800/80 text-slate-100 px-4 py-2 text-sm font-medium hover:bg-slate-700 transition">中文</button>
+          <button id="open-settings" class="inline-flex items-center gap-2 rounded-xl bg-cyan-500/90 text-slate-950 px-4 py-2 text-sm font-semibold hover:bg-cyan-400 button-ring transition" data-i18n="settingsButton">Settings</button>
+        </div>
       </div>
     </header>
 
     <section class="grid gap-6 lg:grid-cols-3">
       <div class="glass rounded-3xl p-6 lg:col-span-2 space-y-6">
         <div>
-          <h2 class="text-xl font-semibold">上传 EPUB</h2>
-          <p class="text-sm text-slate-400">支持中英文混排与高清图片，单个文件 ≤ 150MB。</p>
+          <h2 class="text-xl font-semibold" data-i18n="uploadHeading">Upload EPUB</h2>
+          <p class="text-sm text-slate-400" data-i18n="uploadSubheading">Supports bilingual content and HD imagery up to 150 MB per file.</p>
         </div>
         <div id="drop-zone" class="border border-dashed border-slate-600 rounded-2xl p-8 text-center transition hover:border-cyan-400 hover:bg-slate-900/40 cursor-pointer">
           <div class="flex flex-col items-center gap-3">
             <span class="text-4xl">📚</span>
-            <p class="text-lg font-medium">拖拽文件到此处或点击选择</p>
-            <p class="text-sm text-slate-400">我们会自动排队转换，可随时查看进度与历史记录。</p>
-            <input id="file-input" type="file" accept=".epub" class="hidden" />
-            <button id="upload-button" class="mt-2 inline-flex items-center gap-2 rounded-xl bg-cyan-500/90 text-slate-950 px-5 py-2 text-sm font-semibold hover:bg-cyan-400 button-ring transition">选择 EPUB</button>
+            <p class="text-lg font-medium" data-i18n="dropTitle">Drag EPUB files here or click to browse</p>
+            <p class="text-sm text-slate-400" data-i18n="dropSubtitle">Files enter the queue automatically—track progress and history in one place.</p>
+            <input id="file-input" type="file" accept=".epub" class="hidden" multiple />
+            <button id="upload-button" class="mt-2 inline-flex items-center gap-2 rounded-xl bg-cyan-500/90 text-slate-950 px-5 py-2 text-sm font-semibold hover:bg-cyan-400 button-ring transition" data-i18n="chooseFileButton">Choose EPUB</button>
           </div>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div class="glass rounded-2xl p-4">
-            <p class="text-xs uppercase text-slate-400">总任务</p>
+            <p class="text-xs uppercase text-slate-400" data-i18n="statTotalLabel">Total Jobs</p>
             <p id="stat-total" class="text-2xl font-semibold">0</p>
           </div>
           <div class="glass rounded-2xl p-4">
-            <p class="text-xs uppercase text-slate-400">已完成</p>
+            <p class="text-xs uppercase text-slate-400" data-i18n="statCompletedLabel">Completed</p>
             <p id="stat-completed" class="text-2xl font-semibold text-emerald-300">0</p>
           </div>
           <div class="glass rounded-2xl p-4">
-            <p class="text-xs uppercase text-slate-400">排队中</p>
+            <p class="text-xs uppercase text-slate-400" data-i18n="statPendingLabel">Queued</p>
             <p id="stat-pending" class="text-2xl font-semibold text-cyan-300">0</p>
           </div>
         </div>
       </div>
       <aside class="glass rounded-3xl p-6 space-y-4">
-        <h2 class="text-xl font-semibold">操作</h2>
-        <button id="refresh-jobs" class="w-full rounded-xl bg-slate-800/70 hover:bg-slate-700 px-4 py-2 text-sm font-medium transition">刷新列表</button>
-        <button id="clear-jobs" class="w-full rounded-xl bg-rose-500/90 hover:bg-rose-400 px-4 py-2 text-sm font-semibold text-slate-950 transition">清空历史</button>
+        <h2 class="text-xl font-semibold" data-i18n="actionsHeading">Actions</h2>
+        <button id="refresh-jobs" class="w-full rounded-xl bg-slate-800/70 hover:bg-slate-700 px-4 py-2 text-sm font-medium transition" data-i18n="refreshButton">Refresh List</button>
+        <button id="clear-jobs" class="w-full rounded-xl bg-rose-500/90 hover:bg-rose-400 px-4 py-2 text-sm font-semibold text-slate-950 transition" data-i18n="clearButton">Clear History</button>
         <div class="border-t border-slate-700 pt-4 text-sm text-slate-400 space-y-2">
-          <p>上传后任务会自动进入队列。可在任意设备登录同一浏览器继续查看历史转换结果。</p>
-          <p>如需自定义页面尺寸，可在设置中调整默认纸张与页边距。</p>
+          <p data-i18n="actionsTip1">Uploads enter the queue automatically. Sign in on the same browser to keep your history.</p>
+          <p data-i18n="actionsTip2">Need custom page size or margins? Adjust them from Settings before uploading.</p>
         </div>
       </aside>
     </section>
@@ -79,19 +82,17 @@
     <section class="glass rounded-3xl p-6">
       <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
         <div>
-          <h2 class="text-xl font-semibold">转换队列与历史</h2>
-          <p class="text-sm text-slate-400">最新任务显示在最前，可点击下载 PDF 或重新转换。</p>
+          <h2 class="text-xl font-semibold" data-i18n="historyHeading">Queue & History</h2>
+          <p class="text-sm text-slate-400" data-i18n="historySubtitle">Newest jobs appear first. Download PDFs or retry any conversion.</p>
         </div>
         <div class="flex items-center gap-3">
           <label class="flex items-center gap-2 text-sm text-slate-300">
             <input type="checkbox" id="auto-refresh" class="rounded border-slate-600 bg-slate-800 text-cyan-500 focus:ring-cyan-500" checked />
-            自动刷新
+            <span data-i18n="autoRefreshLabel">Auto Refresh</span>
           </label>
         </div>
       </div>
-      <div id="jobs-empty" class="hidden border border-dashed border-slate-600 rounded-2xl p-10 text-center text-slate-400">
-        还没有转换记录，上传 EPUB 文件开始体验吧！
-      </div>
+      <div id="jobs-empty" class="hidden border border-dashed border-slate-600 rounded-2xl p-10 text-center text-slate-400" data-i18n="emptyState">No conversions yet—upload an EPUB to get started.</div>
       <div id="jobs-list" class="space-y-4"></div>
     </section>
   </div>
@@ -99,27 +100,27 @@
   <div id="settings-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur hidden items-center justify-center z-30">
     <div class="glass rounded-3xl max-w-md w-full p-6 space-y-4">
       <div class="flex items-center justify-between">
-        <h3 class="text-lg font-semibold">个性化设置</h3>
+        <h3 class="text-lg font-semibold" data-i18n="settingsTitle">Personal Settings</h3>
         <button id="close-settings" class="text-slate-400 hover:text-slate-200">✕</button>
       </div>
       <div class="space-y-4">
-        <label class="block text-sm font-medium text-slate-300">显示名称
-          <input id="settings-name" type="text" placeholder="输入昵称，便于记忆" class="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900/80 text-slate-100 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500" />
+        <label class="block text-sm font-medium text-slate-300" data-i18n="settingsNameLabel">Display Name
+          <input id="settings-name" type="text" placeholder="Name for your history" class="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900/80 text-slate-100 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500" />
         </label>
-        <label class="block text-sm font-medium text-slate-300">默认纸张尺寸
+        <label class="block text-sm font-medium text-slate-300" data-i18n="settingsPageLabel">Default Page Size
           <select id="settings-page" class="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900/80 text-slate-100 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500">
             <option value="A4">A4</option>
             <option value="Letter">Letter</option>
             <option value="Legal">Legal</option>
           </select>
         </label>
-        <label class="block text-sm font-medium text-slate-300">页边距 (mm)
+        <label class="block text-sm font-medium text-slate-300" data-i18n="settingsMarginLabel">Margins (mm)
           <input id="settings-margin" type="number" min="0" max="50" step="1" value="15" class="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900/80 text-slate-100 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500" />
         </label>
       </div>
       <div class="flex justify-end gap-3 pt-2">
-        <button id="settings-cancel" class="rounded-xl px-4 py-2 bg-slate-800/80 text-sm font-medium hover:bg-slate-700">取消</button>
-        <button id="settings-save" class="rounded-xl px-4 py-2 bg-cyan-500 text-slate-950 text-sm font-semibold hover:bg-cyan-400">保存</button>
+        <button id="settings-cancel" class="rounded-xl px-4 py-2 bg-slate-800/80 text-sm font-medium hover:bg-slate-700" data-i18n="settingsCancel">Cancel</button>
+        <button id="settings-save" class="rounded-xl px-4 py-2 bg-cyan-500 text-slate-950 text-sm font-semibold hover:bg-cyan-400" data-i18n="settingsSave">Save</button>
       </div>
     </div>
   </div>
